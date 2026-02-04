@@ -1,0 +1,365 @@
+{
+  "name": "Sync Domains from Cloudflare",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sync-domains",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "sync-domains"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.cloudflare.com/client/v4/zones",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "cloudflareApi",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false
+            }
+          }
+        }
+      },
+      "id": "cloudflare-list-zones",
+      "name": "Cloudflare - List Zones",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300],
+      "credentials": {
+        "cloudflareApi": {
+          "id": "YOUR_CLOUDFLARE_CREDENTIAL_ID",
+          "name": "Cloudflare API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "result",
+        "options": {}
+      },
+      "id": "split-zones",
+      "name": "Split Zones",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 5,
+        "options": {}
+      },
+      "id": "batch-process",
+      "name": "Batch Process",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "HEAD",
+        "url": "=https://{{ $json.name }}",
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "check-website-status",
+      "name": "Check Website Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 200],
+      "onError": "continueRegularOutput",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://rdap.org/domain/{{ $json.name }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "whois-lookup",
+      "name": "WHOIS/RDAP Lookup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 400],
+      "onError": "continueRegularOutput",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "mergeByFields": {
+          "values": [
+            {
+              "field1": "name",
+              "field2": "name"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "merge-results",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const data = item.json;\n  const statusCode = data.statusCode || 0;\n  \n  // Determine status category\n  let statusCategory = 'down';\n  if (statusCode === 200) {\n    statusCategory = 'healthy';\n  } else if (statusCode === 301 || statusCode === 302) {\n    statusCategory = 'redirect';\n  }\n  \n  // Parse WHOIS/RDAP data\n  let expirationDate = null;\n  let registrar = 'Unknown';\n  let nameServers = '';\n  \n  if (data.events) {\n    const expirationEvent = data.events.find(e => e.eventAction === 'expiration');\n    if (expirationEvent) {\n      expirationDate = expirationEvent.eventDate;\n    }\n  }\n  \n  if (data.entities) {\n    const registrarEntity = data.entities.find(e => e.roles && e.roles.includes('registrar'));\n    if (registrarEntity && registrarEntity.vcardArray) {\n      const fn = registrarEntity.vcardArray[1]?.find(v => v[0] === 'fn');\n      if (fn) registrar = fn[3];\n    }\n  }\n  \n  if (data.nameservers) {\n    nameServers = data.nameservers.map(ns => ns.ldhName).join(', ');\n  }\n  \n  // Calculate renewal status\n  let renewalStatus = 'unknown';\n  let daysUntilExpiration = null;\n  \n  if (expirationDate) {\n    const now = new Date();\n    const expDate = new Date(expirationDate);\n    const twoWeeksFromNow = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);\n    \n    daysUntilExpiration = Math.ceil((expDate - now) / (1000 * 60 * 60 * 24));\n    \n    if (expDate < now) {\n      renewalStatus = 'expired';\n    } else if (expDate < twoWeeksFromNow) {\n      renewalStatus = 'warning';\n    } else {\n      renewalStatus = 'healthy';\n    }\n  }\n  \n  results.push({\n    json: {\n      domain: data.name || data.domain,\n      httpStatus: statusCode,\n      statusCategory: statusCategory,\n      registrar: registrar,\n      nameServers: nameServers,\n      expirationDate: expirationDate,\n      lastChecked: new Date().toISOString(),\n      cloudflareZoneId: data.id || '',\n      renewalStatus: renewalStatus,\n      daysUntilExpiration: daysUntilExpiration\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "process-data",
+      "name": "Process Domain Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "tableId": "domains",
+        "fieldsUi": {
+          "values": [
+            {
+              "column": "domain",
+              "value": "={{ $json.domain }}"
+            },
+            {
+              "column": "httpStatus",
+              "value": "={{ $json.httpStatus }}"
+            },
+            {
+              "column": "statusCategory",
+              "value": "={{ $json.statusCategory }}"
+            },
+            {
+              "column": "registrar",
+              "value": "={{ $json.registrar }}"
+            },
+            {
+              "column": "nameServers",
+              "value": "={{ $json.nameServers }}"
+            },
+            {
+              "column": "expirationDate",
+              "value": "={{ $json.expirationDate }}"
+            },
+            {
+              "column": "lastChecked",
+              "value": "={{ $json.lastChecked }}"
+            },
+            {
+              "column": "cloudflareZoneId",
+              "value": "={{ $json.cloudflareZoneId }}"
+            },
+            {
+              "column": "renewalStatus",
+              "value": "={{ $json.renewalStatus }}"
+            },
+            {
+              "column": "daysUntilExpiration",
+              "value": "={{ $json.daysUntilExpiration }}"
+            }
+          ]
+        },
+        "matchingColumns": ["domain"]
+      },
+      "id": "upsert-to-data-table",
+      "name": "Upsert to Data Table",
+      "type": "n8n-nodes-base.n8nTables",
+      "typeVersion": 1,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "aggregate-results",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst allData = items[0]?.json?.data || [];\n\nreturn [{\n  json: {\n    success: true,\n    domainsProcessed: allData.length,\n    domainsUpdated: allData.length,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2440, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Cloudflare - List Zones",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cloudflare - List Zones": {
+      "main": [
+        [
+          {
+            "node": "Split Zones",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Zones": {
+      "main": [
+        [
+          {
+            "node": "Batch Process",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batch Process": {
+      "main": [
+        [
+          {
+            "node": "Check Website Status",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "WHOIS/RDAP Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Website Status": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WHOIS/RDAP Lookup": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Results": {
+      "main": [
+        [
+          {
+            "node": "Process Domain Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Domain Data": {
+      "main": [
+        [
+          {
+            "node": "Upsert to Data Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert to Data Table": {
+      "main": [
+        [
+          {
+            "node": "Batch Process",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Results": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}

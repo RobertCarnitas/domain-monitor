@@ -1,0 +1,213 @@
+{
+  "name": "Scheduled Status Check",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "domains",
+        "returnAll": true,
+        "options": {}
+      },
+      "id": "read-domains",
+      "name": "Read All Domains",
+      "type": "n8n-nodes-base.n8nTables",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 10,
+        "options": {}
+      },
+      "id": "batch-domains",
+      "name": "Batch Domains",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "HEAD",
+        "url": "=https://{{ $json.domain }}",
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "check-status",
+      "name": "Check Website Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300],
+      "onError": "continueRegularOutput",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const data = item.json;\n  const statusCode = data.statusCode || 0;\n  \n  let statusCategory = 'down';\n  if (statusCode === 200) {\n    statusCategory = 'healthy';\n  } else if (statusCode === 301 || statusCode === 302) {\n    statusCategory = 'redirect';\n  }\n  \n  results.push({\n    json: {\n      domain: data.domain,\n      httpStatus: statusCode,\n      statusCategory: statusCategory,\n      lastChecked: new Date().toISOString()\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "process-status",
+      "name": "Process Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "domains",
+        "fieldsUi": {
+          "values": [
+            {
+              "column": "httpStatus",
+              "value": "={{ $json.httpStatus }}"
+            },
+            {
+              "column": "statusCategory",
+              "value": "={{ $json.statusCategory }}"
+            },
+            {
+              "column": "lastChecked",
+              "value": "={{ $json.lastChecked }}"
+            }
+          ]
+        },
+        "matchingColumns": ["domain"]
+      },
+      "id": "update-data-table",
+      "name": "Update Status in Table",
+      "type": "n8n-nodes-base.n8nTables",
+      "typeVersion": 1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "tableId": "status_checks",
+        "fieldsUi": {
+          "values": [
+            {
+              "column": "domain",
+              "value": "={{ $json.domain }}"
+            },
+            {
+              "column": "httpStatus",
+              "value": "={{ $json.httpStatus }}"
+            },
+            {
+              "column": "checkedAt",
+              "value": "={{ $json.lastChecked }}"
+            }
+          ]
+        }
+      },
+      "id": "log-status-check",
+      "name": "Log Status Check",
+      "type": "n8n-nodes-base.n8nTables",
+      "typeVersion": 1,
+      "position": [1340, 480]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read All Domains",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read All Domains": {
+      "main": [
+        [
+          {
+            "node": "Batch Domains",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batch Domains": {
+      "main": [
+        [
+          {
+            "node": "Check Website Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Website Status": {
+      "main": [
+        [
+          {
+            "node": "Process Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Status": {
+      "main": [
+        [
+          {
+            "node": "Update Status in Table",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log Status Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Status in Table": {
+      "main": [
+        [
+          {
+            "node": "Batch Domains",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}
