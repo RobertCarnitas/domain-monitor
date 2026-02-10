@@ -1,128 +1,85 @@
 import { NextResponse } from 'next/server'
 import { Domain } from '@/lib/types'
+import { getSupabase, SupabaseDomain } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
-const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN
-const CLOUDFLARE_API_URL = 'https://api.cloudflare.com/client/v4'
-
-interface CloudflareZone {
-  id: string
-  name: string
-  status: string
-  name_servers: string[]
-  created_on: string
-}
-
-async function fetchCloudflareZones(): Promise<CloudflareZone[]> {
-  const zones: CloudflareZone[] = []
-  let page = 1
-  let hasMore = true
-
-  while (hasMore) {
-    const response = await fetch(
-      `${CLOUDFLARE_API_URL}/zones?page=${page}&per_page=50`,
-      {
-        headers: {
-          'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-        cache: 'no-store'
-      }
-    )
-
-    if (!response.ok) {
-      throw new Error(`Cloudflare API error: ${response.status}`)
-    }
-
-    const data = await response.json()
-    zones.push(...data.result)
-
-    // Check if there are more pages
-    const totalPages = data.result_info?.total_pages || 1
-    hasMore = page < totalPages
-    page++
+function calculateRenewalStatus(expirationDate: string | null): { status: 'healthy' | 'warning' | 'expired' | 'unknown', days: number | null } {
+  if (!expirationDate) {
+    return { status: 'unknown', days: null }
   }
 
-  return zones
+  const now = new Date()
+  const expDate = new Date(expirationDate)
+  const diffTime = expDate.getTime() - now.getTime()
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+  if (diffDays < 0) {
+    return { status: 'expired', days: diffDays }
+  } else if (diffDays <= 30) {
+    return { status: 'warning', days: diffDays }
+  } else {
+    return { status: 'healthy', days: diffDays }
+  }
 }
 
-async function checkHttpStatus(domain: string): Promise<{ status: number; category: 'healthy' | 'redirect' | 'down' }> {
-  try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 10000) // 10 second timeout
-
-    const response = await fetch(`https://${domain}`, {
-      method: 'HEAD',
-      redirect: 'manual',
-      signal: controller.signal,
-    })
-
-    clearTimeout(timeout)
-
-    const status = response.status
-    let category: 'healthy' | 'redirect' | 'down' = 'down'
-
-    if (status >= 200 && status < 300) {
-      category = 'healthy'
-    } else if (status >= 300 && status < 400) {
-      category = 'redirect'
-    }
-
-    return { status, category }
-  } catch {
-    return { status: 0, category: 'down' }
-  }
+function getStatusCategory(httpStatus: number | null): 'healthy' | 'redirect' | 'down' {
+  if (!httpStatus || httpStatus === 0) return 'down'
+  if (httpStatus >= 200 && httpStatus < 300) return 'healthy'
+  if (httpStatus >= 300 && httpStatus < 400) return 'redirect'
+  return 'down'
 }
 
 export async function GET() {
   try {
-    if (!CLOUDFLARE_API_TOKEN) {
-      console.error('CLOUDFLARE_API_TOKEN not configured')
+    // Check if Supabase is configured
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+      console.error('Supabase not configured')
       return NextResponse.json({
         domains: [],
         lastSynced: new Date().toISOString(),
-        error: 'Cloudflare API token not configured'
+        error: 'Database not configured. Please set SUPABASE_URL and SUPABASE_ANON_KEY environment variables.'
       })
     }
 
-    const zones = await fetchCloudflareZones()
+    // Fetch all domains from Supabase
+    const supabase = getSupabase()
+    const { data: supabaseDomains, error } = await supabase
+      .from('domains')
+      .select('*')
+      .order('domain', { ascending: true })
+
+    if (error) {
+      throw new Error(`Supabase error: ${error.message}`)
+    }
+
     const now = new Date()
 
-    // Process domains (limit HTTP checks to avoid timeout)
-    const domains: Domain[] = await Promise.all(
-      zones.map(async (zone, index) => {
-        // Only check HTTP status for first 20 domains to avoid timeout
-        let httpStatus = 0
-        let statusCategory: 'healthy' | 'redirect' | 'down' = 'down'
+    // Transform Supabase domains to our Domain type
+    const domains: Domain[] = (supabaseDomains as SupabaseDomain[]).map((d) => {
+      const { status: renewalStatus, days: daysUntilExpiration } = calculateRenewalStatus(d.expiration_date)
+      const statusCategory = getStatusCategory(d.http_status)
 
-        if (index < 20) {
-          const statusCheck = await checkHttpStatus(zone.name)
-          httpStatus = statusCheck.status
-          statusCategory = statusCheck.category
-        }
-
-        return {
-          id: zone.id,
-          domain: zone.name,
-          httpStatus,
-          statusCategory,
-          registrar: 'Unknown', // Would need WHOIS lookup
-          nameServers: zone.name_servers?.join(', ') || '',
-          expirationDate: null, // Would need WHOIS lookup
-          createdDate: zone.created_on,
-          lastChecked: now.toISOString(),
-          cloudflareZoneId: zone.id,
-          renewalStatus: 'unknown' as const,
-          daysUntilExpiration: null,
-        }
-      })
-    )
+      return {
+        id: d.id.toString(),
+        domain: d.domain,
+        httpStatus: d.http_status || 0,
+        statusCategory,
+        registrar: d.registrar || 'Unknown',
+        nameServers: d.name_servers || '',
+        expirationDate: d.expiration_date,
+        createdDate: d.created_date,
+        lastChecked: d.last_checked || d.updated_at,
+        cloudflareZoneId: d.cloudflare_zone_id,
+        renewalStatus,
+        daysUntilExpiration,
+      }
+    })
 
     return NextResponse.json({
       domains,
       lastSynced: now.toISOString(),
-      total: zones.length
+      total: domains.length
     })
   } catch (error) {
     console.error('Error fetching domains:', error)
