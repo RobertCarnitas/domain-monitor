@@ -5,18 +5,22 @@ export const dynamic = 'force-dynamic'
 
 const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL
 
+// n8n data table returns camelCase field names
 interface N8nDomainRow {
   id: number
   domain: string
-  cloudflare_zone_id: string
-  name_servers: string | null
+  cloudflareZoneId: string
+  nameServers: string | null
   registrar: string | null
-  expiration_date: string | null
-  created_date: string | null
-  http_status: number | null
-  last_checked: string | null
-  created_at: string
-  updated_at: string
+  expirationDate: string | null
+  createdDate: string | null
+  httpStatus: string | number | null  // n8n returns as string
+  statusCategory: string | null
+  lastChecked: string | null
+  renewalStatus: string | null
+  daysUntilExpiration: number | null
+  createdAt: string
+  updatedAt: string
 }
 
 function calculateRenewalStatus(expirationDate: string | null): { status: 'healthy' | 'warning' | 'expired' | 'unknown', days: number | null } {
@@ -77,20 +81,26 @@ export async function GET() {
 
     // Transform n8n data to our Domain type
     const domains: Domain[] = rows.map((d: N8nDomainRow) => {
-      const { status: renewalStatus, days: daysUntilExpiration } = calculateRenewalStatus(d.expiration_date)
-      const statusCategory = getStatusCategory(d.http_status)
+      // Parse httpStatus - n8n may return it as string
+      const httpStatusNum = typeof d.httpStatus === 'string' ? parseInt(d.httpStatus, 10) : (d.httpStatus || 0)
+
+      // Calculate renewal status from expiration date
+      const { status: renewalStatus, days: daysUntilExpiration } = calculateRenewalStatus(d.expirationDate)
+
+      // Get status category from HTTP status
+      const statusCategory = getStatusCategory(httpStatusNum)
 
       return {
         id: d.id.toString(),
         domain: d.domain,
-        httpStatus: d.http_status || 0,
+        httpStatus: httpStatusNum,
         statusCategory,
         registrar: d.registrar || 'Unknown',
-        nameServers: d.name_servers || '',
-        expirationDate: d.expiration_date,
-        createdDate: d.created_date,
-        lastChecked: d.last_checked || d.updated_at,
-        cloudflareZoneId: d.cloudflare_zone_id,
+        nameServers: d.nameServers || '',
+        expirationDate: d.expirationDate,
+        createdDate: d.createdDate,
+        lastChecked: d.lastChecked || d.updatedAt,
+        cloudflareZoneId: d.cloudflareZoneId,
         renewalStatus,
         daysUntilExpiration,
       }
