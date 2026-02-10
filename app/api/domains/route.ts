@@ -79,8 +79,31 @@ export async function GET() {
     // Handle both array response and object with data property
     const rows: N8nDomainRow[] = Array.isArray(n8nData) ? n8nData : (n8nData.data || n8nData.rows || [])
 
+    // Deduplicate domains - keep the one with valid httpStatus (non-zero) or most recently updated
+    const domainMap = new Map<string, N8nDomainRow>()
+    for (const row of rows) {
+      const existing = domainMap.get(row.domain)
+      if (!existing) {
+        domainMap.set(row.domain, row)
+      } else {
+        // Prefer the row with valid httpStatus (non-zero)
+        const existingStatus = typeof existing.httpStatus === 'string' ? parseInt(existing.httpStatus, 10) : (existing.httpStatus || 0)
+        const newStatus = typeof row.httpStatus === 'string' ? parseInt(row.httpStatus, 10) : (row.httpStatus || 0)
+
+        if (newStatus > 0 && existingStatus === 0) {
+          domainMap.set(row.domain, row)
+        } else if (existingStatus === 0 && newStatus === 0) {
+          // Both have no status, keep the most recently updated
+          if (new Date(row.updatedAt) > new Date(existing.updatedAt)) {
+            domainMap.set(row.domain, row)
+          }
+        }
+      }
+    }
+    const deduplicatedRows = Array.from(domainMap.values())
+
     // Transform n8n data to our Domain type
-    const domains: Domain[] = rows.map((d: N8nDomainRow) => {
+    const domains: Domain[] = deduplicatedRows.map((d: N8nDomainRow) => {
       // Parse httpStatus - n8n may return it as string
       const httpStatusNum = typeof d.httpStatus === 'string' ? parseInt(d.httpStatus, 10) : (d.httpStatus || 0)
 
