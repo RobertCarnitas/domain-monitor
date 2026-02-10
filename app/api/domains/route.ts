@@ -1,8 +1,23 @@
 import { NextResponse } from 'next/server'
 import { Domain } from '@/lib/types'
-import { getSupabase, SupabaseDomain } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
+
+const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL
+
+interface N8nDomainRow {
+  id: number
+  domain: string
+  cloudflare_zone_id: string
+  name_servers: string | null
+  registrar: string | null
+  expiration_date: string | null
+  created_date: string | null
+  http_status: number | null
+  last_checked: string | null
+  created_at: string
+  updated_at: string
+}
 
 function calculateRenewalStatus(expirationDate: string | null): { status: 'healthy' | 'warning' | 'expired' | 'unknown', days: number | null } {
   if (!expirationDate) {
@@ -32,31 +47,36 @@ function getStatusCategory(httpStatus: number | null): 'healthy' | 'redirect' | 
 
 export async function GET() {
   try {
-    // Check if Supabase is configured
-    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-      console.error('Supabase not configured')
+    if (!N8N_WEBHOOK_URL) {
+      console.error('N8N_WEBHOOK_URL not configured')
       return NextResponse.json({
         domains: [],
         lastSynced: new Date().toISOString(),
-        error: 'Database not configured. Please set SUPABASE_URL and SUPABASE_ANON_KEY environment variables.'
+        error: 'n8n webhook URL not configured. Please set N8N_WEBHOOK_URL environment variable.'
       })
     }
 
-    // Fetch all domains from Supabase
-    const supabase = getSupabase()
-    const { data: supabaseDomains, error } = await supabase
-      .from('domains')
-      .select('*')
-      .order('domain', { ascending: true })
+    // Fetch domains from n8n webhook (which reads from n8n data tables)
+    const response = await fetch(`${N8N_WEBHOOK_URL}/get-domains`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      cache: 'no-store'
+    })
 
-    if (error) {
-      throw new Error(`Supabase error: ${error.message}`)
+    if (!response.ok) {
+      throw new Error(`n8n webhook error: ${response.status} ${response.statusText}`)
     }
 
+    const n8nData = await response.json()
     const now = new Date()
 
-    // Transform Supabase domains to our Domain type
-    const domains: Domain[] = (supabaseDomains as SupabaseDomain[]).map((d) => {
+    // Handle both array response and object with data property
+    const rows: N8nDomainRow[] = Array.isArray(n8nData) ? n8nData : (n8nData.data || n8nData.rows || [])
+
+    // Transform n8n data to our Domain type
+    const domains: Domain[] = rows.map((d: N8nDomainRow) => {
       const { status: renewalStatus, days: daysUntilExpiration } = calculateRenewalStatus(d.expiration_date)
       const statusCategory = getStatusCategory(d.http_status)
 
