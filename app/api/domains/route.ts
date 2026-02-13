@@ -23,6 +23,20 @@ interface N8nDomainRow {
   updatedAt: string
 }
 
+/**
+ * Sanitize expiration date - n8n may store raw expressions like "{{ $json.expires }}"
+ * instead of actual dates. Returns null for any invalid date value.
+ */
+function sanitizeExpirationDate(value: string | null | undefined): string | null {
+  if (!value) return null
+  // Reject n8n expression strings that were never evaluated
+  if (value.includes('{{') || value.includes('$json')) return null
+  // Check if it's a valid date
+  const date = new Date(value)
+  if (isNaN(date.getTime())) return null
+  return value
+}
+
 function calculateRenewalStatus(expirationDate: string | null): { status: 'healthy' | 'warning' | 'expired' | 'unknown', days: number | null } {
   if (!expirationDate) {
     return { status: 'unknown', days: null }
@@ -42,7 +56,11 @@ function calculateRenewalStatus(expirationDate: string | null): { status: 'healt
   }
 }
 
-function getStatusCategory(httpStatus: number | null): 'healthy' | 'redirect' | 'down' {
+function getStatusCategory(httpStatus: number | null, n8nStatusCategory: string | null): 'healthy' | 'redirect' | 'down' | 'unchecked' {
+  // If n8n never checked this domain (httpStatus 0 and statusCategory unknown/null), it's unchecked
+  if ((!httpStatus || httpStatus === 0) && (!n8nStatusCategory || n8nStatusCategory === 'unknown' || n8nStatusCategory === 'down')) {
+    return 'unchecked'
+  }
   if (!httpStatus || httpStatus === 0) return 'down'
   if (httpStatus >= 200 && httpStatus < 300) return 'healthy'
   if (httpStatus >= 300 && httpStatus < 400) return 'redirect'
@@ -118,11 +136,14 @@ export async function GET() {
       // Parse httpStatus - n8n may return it as string
       const httpStatusNum = typeof d.httpStatus === 'string' ? parseInt(d.httpStatus, 10) : (d.httpStatus || 0)
 
-      // Calculate renewal status from expiration date
-      const { status: renewalStatus, days: daysUntilExpiration } = calculateRenewalStatus(d.expirationDate)
+      // Sanitize expiration date - n8n may have stored raw expressions like "{{ $json.expires }}"
+      const cleanExpirationDate = sanitizeExpirationDate(d.expirationDate)
 
-      // Get status category from HTTP status
-      const statusCategory = getStatusCategory(httpStatusNum)
+      // Calculate renewal status from sanitized expiration date
+      const { status: renewalStatus, days: daysUntilExpiration } = calculateRenewalStatus(cleanExpirationDate)
+
+      // Get status category from HTTP status, using n8n's stored category to detect unchecked domains
+      const statusCategory = getStatusCategory(httpStatusNum, d.statusCategory)
 
       return {
         id: d.id.toString(),
@@ -131,7 +152,7 @@ export async function GET() {
         statusCategory,
         registrar: d.registrar || 'Unknown',
         nameServers: d.nameServers || '',
-        expirationDate: d.expirationDate,
+        expirationDate: cleanExpirationDate,
         createdDate: d.createdDate,
         lastChecked: d.lastChecked || d.updatedAt,
         cloudflareZoneId: d.cloudflareZoneId,

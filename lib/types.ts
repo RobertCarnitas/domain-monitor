@@ -2,7 +2,7 @@ export interface Domain {
   id: string
   domain: string
   httpStatus: number
-  statusCategory: 'healthy' | 'redirect' | 'down'
+  statusCategory: 'healthy' | 'redirect' | 'down' | 'unchecked'
   registrar: string
   nameServers: string
   expirationDate: string | null
@@ -36,10 +36,11 @@ export interface SyncResult {
   errors: string[]
 }
 
-export type StatusColor = 'red' | 'yellow' | 'green'
+export type StatusColor = 'red' | 'yellow' | 'green' | 'gray'
 
 export interface StatusGroup {
   critical: Domain[]
   warning: Domain[]
   healthy: Domain[]
+  unchecked: Domain[]
 }

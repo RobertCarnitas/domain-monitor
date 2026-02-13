@@ -40,10 +40,10 @@ export function DomainList({ domains, type }: DomainListProps) {
           </div>
           <Badge variant={getBadgeVariant(domain, type)} className="ml-2 shrink-0">
             {type === 'website'
-              ? `${domain.httpStatus}`
+              ? domain.statusCategory === 'unchecked' ? 'N/A' : `${domain.httpStatus}`
               : domain.daysUntilExpiration !== null
                 ? `${domain.daysUntilExpiration}d`
-                : 'Unknown'
+                : 'N/A'
             }
           </Badge>
         </button>
@@ -65,6 +65,7 @@ function getBadgeVariant(domain: Domain, type: 'website' | 'renewal'): 'destruct
   if (type === 'website') {
     if (domain.statusCategory === 'down') return 'destructive'
     if (domain.statusCategory === 'redirect') return 'warning'
+    if (domain.statusCategory === 'unchecked') return 'secondary'
     return 'success'
   } else {
     if (domain.renewalStatus === 'expired') return 'destructive'

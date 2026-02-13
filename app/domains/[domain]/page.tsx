@@ -182,12 +182,13 @@ function DomainDetailContent() {
   )
 }
 
-function getStatusBadgeVariant(status: Domain['statusCategory']): 'destructive' | 'warning' | 'success' {
+function getStatusBadgeVariant(status: Domain['statusCategory']): 'destructive' | 'warning' | 'success' | 'secondary' {
   switch (status) {
     case 'down': return 'destructive'
     case 'redirect': return 'warning'
     case 'healthy': return 'success'
-    default: return 'success'
+    case 'unchecked': return 'secondary'
+    default: return 'secondary'
   }
 }
 

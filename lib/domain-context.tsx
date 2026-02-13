@@ -64,7 +64,8 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
     return {
       critical: domains.filter(d => d.statusCategory === 'down'),
       warning: domains.filter(d => d.statusCategory === 'redirect'),
-      healthy: domains.filter(d => d.statusCategory === 'healthy')
+      healthy: domains.filter(d => d.statusCategory === 'healthy'),
+      unchecked: domains.filter(d => d.statusCategory === 'unchecked')
     }
   }, [domains])
 
@@ -72,7 +73,8 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
     return {
       critical: domains.filter(d => d.renewalStatus === 'expired'),
       warning: domains.filter(d => d.renewalStatus === 'warning'),
-      healthy: domains.filter(d => d.renewalStatus === 'healthy' || d.renewalStatus === 'unknown')
+      healthy: domains.filter(d => d.renewalStatus === 'healthy'),
+      unchecked: domains.filter(d => d.renewalStatus === 'unknown')
     }
   }, [domains])
 

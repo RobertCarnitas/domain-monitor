@@ -36,7 +36,7 @@ export function getStatusExplanation(status: number): string {
   if (status === 500) return 'Server error'
   if (status === 502) return 'Bad gateway'
   if (status === 503) return 'Service unavailable'
-  if (status === 0) return 'Connection failed'
+  if (status === 0) return 'Not yet checked'
   return `HTTP ${status} response`
 }
 

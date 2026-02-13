@@ -12,14 +12,14 @@ interface StatusSectionProps {
 }
 
 export function StatusSection({ title, type }: StatusSectionProps) {
-  const [expandedStatus, setExpandedStatus] = useState<'critical' | 'warning' | 'healthy' | null>(null)
+  const [expandedStatus, setExpandedStatus] = useState<'critical' | 'warning' | 'healthy' | 'unchecked' | null>(null)
   const { getWebsiteStatusGroups, getRenewalStatusGroups } = useDomainData()
 
   const statusGroups = useMemo(() => {
     return type === 'website' ? getWebsiteStatusGroups() : getRenewalStatusGroups()
   }, [type, getWebsiteStatusGroups, getRenewalStatusGroups])
 
-  const toggleExpanded = (status: 'critical' | 'warning' | 'healthy') => {
+  const toggleExpanded = (status: 'critical' | 'warning' | 'healthy' | 'unchecked') => {
     setExpandedStatus(expandedStatus === status ? null : status)
   }
 
@@ -60,6 +60,21 @@ export function StatusSection({ title, type }: StatusSectionProps) {
         />
         {expandedStatus === 'healthy' && (
           <DomainList domains={statusGroups.healthy} type={type} />
+        )}
+
+        {statusGroups.unchecked.length > 0 && (
+          <>
+            <StatusIndicator
+              color="gray"
+              count={statusGroups.unchecked.length}
+              label={type === 'website' ? 'Not Yet Checked' : 'Unknown Expiration'}
+              expanded={expandedStatus === 'unchecked'}
+              onClick={() => toggleExpanded('unchecked')}
+            />
+            {expandedStatus === 'unchecked' && (
+              <DomainList domains={statusGroups.unchecked} type={type} />
+            )}
+          </>
         )}
       </CardContent>
     </Card>

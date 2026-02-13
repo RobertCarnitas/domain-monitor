@@ -15,13 +15,15 @@ interface StatusIndicatorProps {
 const colorMap: Record<StatusColor, string> = {
   red: 'bg-destructive hover:bg-destructive/90',
   yellow: 'bg-warning hover:bg-warning/90',
-  green: 'bg-success hover:bg-success/90'
+  green: 'bg-success hover:bg-success/90',
+  gray: 'bg-muted hover:bg-muted/90'
 }
 
 const textColorMap: Record<StatusColor, string> = {
   red: 'text-destructive-foreground',
   yellow: 'text-warning-foreground',
-  green: 'text-success-foreground'
+  green: 'text-success-foreground',
+  gray: 'text-muted-foreground'
 }
 
 export function StatusIndicator({ color, count, label, expanded, onClick }: StatusIndicatorProps) {
