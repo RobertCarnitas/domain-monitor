@@ -44,34 +44,13 @@
     },
     {
       "parameters": {
-        "method": "HEAD",
-        "url": "=https://{{ $json.domain }}",
-        "options": {
-          "redirect": {
-            "redirect": {
-              "followRedirects": false
-            }
-          },
-          "timeout": 10000
-        }
+        "jsCode": "// Check HTTP status for each domain in the batch\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const domain = item.json.domain;\n  let httpStatus = 0;\n  let statusCategory = 'down';\n\n  try {\n    const response = await this.helpers.httpRequest({\n      method: 'HEAD',\n      url: `https://${domain}`,\n      followRedirect: false,\n      timeout: 10000,\n      returnFullResponse: true,\n      ignoreHttpStatusErrors: true,\n    });\n    httpStatus = response.statusCode || 0;\n    if (httpStatus >= 200 && httpStatus < 300) {\n      statusCategory = 'healthy';\n    } else if (httpStatus >= 300 && httpStatus < 400) {\n      statusCategory = 'redirect';\n    } else {\n      statusCategory = 'down';\n    }\n  } catch (e) {\n    httpStatus = 0;\n    statusCategory = 'down';\n  }\n\n  results.push({\n    json: {\n      domain: domain,\n      httpStatus: httpStatus,\n      statusCategory: statusCategory,\n      lastChecked: new Date().toISOString()\n    }\n  });\n}\n\nreturn results;"
       },
       "id": "check-status",
       "name": "Check Website Status",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [900, 300],
-      "onError": "continueRegularOutput",
-      "continueOnFail": true
-    },
-    {
-      "parameters": {
-        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const data = item.json;\n  const statusCode = data.statusCode || 0;\n  \n  let statusCategory = 'down';\n  if (statusCode === 200) {\n    statusCategory = 'healthy';\n  } else if (statusCode === 301 || statusCode === 302) {\n    statusCategory = 'redirect';\n  }\n  \n  results.push({\n    json: {\n      domain: data.domain,\n      httpStatus: statusCode,\n      statusCategory: statusCategory,\n      lastChecked: new Date().toISOString()\n    }\n  });\n}\n\nreturn results;"
-      },
-      "id": "process-status",
-      "name": "Process Status",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1120, 300]
+      "position": [900, 300]
     },
     {
       "parameters": {
@@ -99,7 +78,7 @@
       "name": "Update Status in Table",
       "type": "n8n-nodes-base.n8nTables",
       "typeVersion": 1,
-      "position": [1340, 300]
+      "position": [1120, 300]
     },
     {
       "parameters": {
@@ -126,7 +105,7 @@
       "name": "Log Status Check",
       "type": "n8n-nodes-base.n8nTables",
       "typeVersion": 1,
-      "position": [1340, 480]
+      "position": [1120, 480]
     }
   ],
   "connections": {
@@ -167,17 +146,6 @@
       "main": [
         [
           {
-            "node": "Process Status",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Process Status": {
-      "main": [
-        [
-          {
             "node": "Update Status in Table",
             "type": "main",
             "index": 0
@@ -208,6 +176,6 @@
   "staticData": null,
   "tags": [],
   "triggerCount": 0,
-  "updatedAt": "2024-01-01T00:00:00.000Z",
-  "versionId": "1"
+  "updatedAt": "2026-02-13T00:00:00.000Z",
+  "versionId": "2"
 }

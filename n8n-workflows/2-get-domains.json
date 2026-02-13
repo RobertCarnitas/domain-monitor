@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "httpMethod": "POST",
+        "httpMethod": "GET",
         "path": "get-domains",
         "responseMode": "responseNode",
         "options": {}
@@ -30,7 +30,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const items = $input.all();\nconst now = new Date();\nconst twoWeeksFromNow = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);\n\nconst processedDomains = items.map(item => {\n  const data = item.json;\n  let renewalStatus = 'unknown';\n  let daysUntilExpiration = null;\n  \n  if (data.expirationDate) {\n    const expDate = new Date(data.expirationDate);\n    daysUntilExpiration = Math.ceil((expDate - now) / (1000 * 60 * 60 * 24));\n    \n    if (expDate < now) {\n      renewalStatus = 'expired';\n    } else if (expDate < twoWeeksFromNow) {\n      renewalStatus = 'warning';\n    } else {\n      renewalStatus = 'healthy';\n    }\n  }\n  \n  return {\n    json: {\n      id: data.id || data.domain,\n      domain: data.domain,\n      httpStatus: data.httpStatus || 0,\n      statusCategory: data.statusCategory || 'down',\n      registrar: data.registrar || 'Unknown',\n      nameServers: data.nameServers || '',\n      expirationDate: data.expirationDate,\n      createdDate: data.createdDate || null,\n      lastChecked: data.lastChecked,\n      cloudflareZoneId: data.cloudflareZoneId || '',\n      renewalStatus: renewalStatus,\n      daysUntilExpiration: daysUntilExpiration\n    }\n  };\n});\n\nreturn processedDomains;"
+        "jsCode": "const items = $input.all();\nconst now = new Date();\nconst thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);\n\nconst processedDomains = items.map(item => {\n  const data = item.json;\n  let renewalStatus = 'unknown';\n  let daysUntilExpiration = null;\n\n  // Sanitize expirationDate - reject n8n expression strings\n  let expirationDate = data.expirationDate || null;\n  if (expirationDate && (expirationDate.includes('{{') || expirationDate.includes('$json'))) {\n    expirationDate = null;\n  }\n  if (expirationDate) {\n    const testDate = new Date(expirationDate);\n    if (isNaN(testDate.getTime())) {\n      expirationDate = null;\n    }\n  }\n\n  if (expirationDate) {\n    const expDate = new Date(expirationDate);\n    daysUntilExpiration = Math.ceil((expDate - now) / (1000 * 60 * 60 * 24));\n\n    if (expDate < now) {\n      renewalStatus = 'expired';\n    } else if (expDate < thirtyDaysFromNow) {\n      renewalStatus = 'warning';\n    } else {\n      renewalStatus = 'healthy';\n    }\n  }\n\n  // Map statusCategory - keep 'unknown' for unchecked domains\n  const httpStatus = parseInt(data.httpStatus, 10) || 0;\n  let statusCategory = data.statusCategory || 'unknown';\n  if (httpStatus === 0 && (!statusCategory || statusCategory === 'down')) {\n    statusCategory = 'unknown';\n  }\n\n  return {\n    json: {\n      id: data.id || data.domain,\n      domain: data.domain,\n      httpStatus: httpStatus,\n      statusCategory: statusCategory,\n      registrar: data.registrar || 'Unknown',\n      nameServers: data.nameServers || '',\n      expirationDate: expirationDate,\n      createdDate: data.createdDate || null,\n      lastChecked: data.lastChecked,\n      cloudflareZoneId: data.cloudflareZoneId || '',\n      renewalStatus: renewalStatus,\n      daysUntilExpiration: daysUntilExpiration,\n      createdAt: data.createdAt,\n      updatedAt: data.updatedAt\n    }\n  };\n});\n\nreturn processedDomains;"
       },
       "id": "calculate-renewal-status",
       "name": "Calculate Renewal Status",
@@ -91,6 +91,6 @@
   "staticData": null,
   "tags": [],
   "triggerCount": 0,
-  "updatedAt": "2024-01-01T00:00:00.000Z",
-  "versionId": "1"
+  "updatedAt": "2026-02-13T00:00:00.000Z",
+  "versionId": "2"
 }

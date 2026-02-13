@@ -17,22 +17,12 @@
     },
     {
       "parameters": {
-        "method": "GET",
-        "url": "https://api.cloudflare.com/client/v4/zones",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "cloudflareApi",
-        "options": {
-          "response": {
-            "response": {
-              "fullResponse": false
-            }
-          }
-        }
+        "jsCode": "// Fetch ALL zones from Cloudflare with pagination\nconst allZones = [];\nlet page = 1;\nlet totalPages = 1;\n\ndo {\n  const response = await this.helpers.httpRequestWithAuthentication.call(\n    this,\n    'cloudflareApi',\n    {\n      method: 'GET',\n      url: `https://api.cloudflare.com/client/v4/zones?page=${page}&per_page=50`,\n      json: true,\n    }\n  );\n\n  if (response.result) {\n    allZones.push(...response.result);\n  }\n\n  if (response.result_info) {\n    totalPages = response.result_info.total_pages || 1;\n  }\n  page++;\n} while (page <= totalPages);\n\n// Return each zone as a separate item\nreturn allZones.map(zone => ({\n  json: {\n    name: zone.name,\n    id: zone.id,\n    status: zone.status,\n    nameServers: (zone.name_servers || []).join(', '),\n  }\n}));"
       },
-      "id": "cloudflare-list-zones",
-      "name": "Cloudflare - List Zones",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "id": "fetch-all-zones",
+      "name": "Fetch All Cloudflare Zones",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [460, 300],
       "credentials": {
         "cloudflareApi": {
@@ -43,91 +33,24 @@
     },
     {
       "parameters": {
-        "fieldToSplitOut": "result",
-        "options": {}
-      },
-      "id": "split-zones",
-      "name": "Split Zones",
-      "type": "n8n-nodes-base.splitOut",
-      "typeVersion": 1,
-      "position": [680, 300]
-    },
-    {
-      "parameters": {
-        "batchSize": 5,
+        "batchSize": 10,
         "options": {}
       },
       "id": "batch-process",
       "name": "Batch Process",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
-      "position": [900, 300]
+      "position": [680, 300]
     },
     {
       "parameters": {
-        "method": "HEAD",
-        "url": "=https://{{ $json.name }}",
-        "options": {
-          "redirect": {
-            "redirect": {
-              "followRedirects": false
-            }
-          },
-          "timeout": 10000
-        }
+        "jsCode": "// Process each domain: HTTP status check + RDAP lookup\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const domain = item.json.name;\n  const zoneId = item.json.id;\n  const cfNameServers = item.json.nameServers || '';\n\n  // --- HTTP Status Check ---\n  let httpStatus = 0;\n  let statusCategory = 'unknown';\n  try {\n    const httpResponse = await this.helpers.httpRequest({\n      method: 'HEAD',\n      url: `https://${domain}`,\n      followRedirect: false,\n      timeout: 10000,\n      returnFullResponse: true,\n      ignoreHttpStatusErrors: true,\n    });\n    httpStatus = httpResponse.statusCode || 0;\n    if (httpStatus >= 200 && httpStatus < 300) {\n      statusCategory = 'healthy';\n    } else if (httpStatus >= 300 && httpStatus < 400) {\n      statusCategory = 'redirect';\n    } else {\n      statusCategory = 'down';\n    }\n  } catch (e) {\n    httpStatus = 0;\n    statusCategory = 'down';\n  }\n\n  // --- RDAP Lookup ---\n  let expirationDate = null;\n  let registrar = 'Unknown';\n  let rdapNameServers = '';\n  try {\n    const rdapResponse = await this.helpers.httpRequest({\n      method: 'GET',\n      url: `https://rdap.org/domain/${domain}`,\n      followRedirect: true,\n      timeout: 15000,\n      json: true,\n    });\n\n    // Parse expiration date from events\n    if (rdapResponse.events && Array.isArray(rdapResponse.events)) {\n      const expirationEvent = rdapResponse.events.find(e => e.eventAction === 'expiration');\n      if (expirationEvent && expirationEvent.eventDate) {\n        expirationDate = expirationEvent.eventDate;\n      }\n    }\n\n    // Parse registrar from entities\n    if (rdapResponse.entities && Array.isArray(rdapResponse.entities)) {\n      const registrarEntity = rdapResponse.entities.find(\n        e => e.roles && Array.isArray(e.roles) && e.roles.includes('registrar')\n      );\n      if (registrarEntity && registrarEntity.vcardArray && registrarEntity.vcardArray[1]) {\n        const fn = registrarEntity.vcardArray[1].find(v => v[0] === 'fn');\n        if (fn && fn[3]) registrar = fn[3];\n      }\n    }\n\n    // Parse name servers from RDAP\n    if (rdapResponse.nameservers && Array.isArray(rdapResponse.nameservers)) {\n      rdapNameServers = rdapResponse.nameservers\n        .map(ns => ns.ldhName)\n        .filter(Boolean)\n        .join(', ');\n    }\n  } catch (e) {\n    // RDAP lookup failed - leave defaults\n  }\n\n  // Use RDAP nameservers if available, otherwise Cloudflare's\n  const nameServers = rdapNameServers || cfNameServers;\n\n  // Calculate renewal status\n  let renewalStatus = 'unknown';\n  let daysUntilExpiration = null;\n  if (expirationDate) {\n    const now = new Date();\n    const expDate = new Date(expirationDate);\n    const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);\n    daysUntilExpiration = Math.ceil((expDate - now) / (1000 * 60 * 60 * 24));\n    if (expDate < now) {\n      renewalStatus = 'expired';\n    } else if (expDate < thirtyDaysFromNow) {\n      renewalStatus = 'warning';\n    } else {\n      renewalStatus = 'healthy';\n    }\n  }\n\n  results.push({\n    json: {\n      domain: domain,\n      httpStatus: httpStatus,\n      statusCategory: statusCategory,\n      registrar: registrar,\n      nameServers: nameServers,\n      expirationDate: expirationDate,\n      lastChecked: new Date().toISOString(),\n      cloudflareZoneId: zoneId,\n      renewalStatus: renewalStatus,\n      daysUntilExpiration: daysUntilExpiration\n    }\n  });\n}\n\nreturn results;"
       },
-      "id": "check-website-status",
-      "name": "Check Website Status",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [1120, 200],
-      "onError": "continueRegularOutput",
-      "continueOnFail": true
-    },
-    {
-      "parameters": {
-        "method": "GET",
-        "url": "=https://rdap.org/domain/{{ $json.name }}",
-        "options": {
-          "timeout": 15000
-        }
-      },
-      "id": "whois-lookup",
-      "name": "WHOIS/RDAP Lookup",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [1120, 400],
-      "onError": "continueRegularOutput",
-      "continueOnFail": true
-    },
-    {
-      "parameters": {
-        "mode": "combine",
-        "mergeByFields": {
-          "values": [
-            {
-              "field1": "name",
-              "field2": "name"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "merge-results",
-      "name": "Merge Results",
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3,
-      "position": [1340, 300]
-    },
-    {
-      "parameters": {
-        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const data = item.json;\n  const statusCode = data.statusCode || 0;\n  \n  // Determine status category\n  let statusCategory = 'down';\n  if (statusCode === 200) {\n    statusCategory = 'healthy';\n  } else if (statusCode === 301 || statusCode === 302) {\n    statusCategory = 'redirect';\n  }\n  \n  // Parse WHOIS/RDAP data\n  let expirationDate = null;\n  let registrar = 'Unknown';\n  let nameServers = '';\n  \n  if (data.events) {\n    const expirationEvent = data.events.find(e => e.eventAction === 'expiration');\n    if (expirationEvent) {\n      expirationDate = expirationEvent.eventDate;\n    }\n  }\n  \n  if (data.entities) {\n    const registrarEntity = data.entities.find(e => e.roles && e.roles.includes('registrar'));\n    if (registrarEntity && registrarEntity.vcardArray) {\n      const fn = registrarEntity.vcardArray[1]?.find(v => v[0] === 'fn');\n      if (fn) registrar = fn[3];\n    }\n  }\n  \n  if (data.nameservers) {\n    nameServers = data.nameservers.map(ns => ns.ldhName).join(', ');\n  }\n  \n  // Calculate renewal status\n  let renewalStatus = 'unknown';\n  let daysUntilExpiration = null;\n  \n  if (expirationDate) {\n    const now = new Date();\n    const expDate = new Date(expirationDate);\n    const twoWeeksFromNow = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);\n    \n    daysUntilExpiration = Math.ceil((expDate - now) / (1000 * 60 * 60 * 24));\n    \n    if (expDate < now) {\n      renewalStatus = 'expired';\n    } else if (expDate < twoWeeksFromNow) {\n      renewalStatus = 'warning';\n    } else {\n      renewalStatus = 'healthy';\n    }\n  }\n  \n  results.push({\n    json: {\n      domain: data.name || data.domain,\n      httpStatus: statusCode,\n      statusCategory: statusCategory,\n      registrar: registrar,\n      nameServers: nameServers,\n      expirationDate: expirationDate,\n      lastChecked: new Date().toISOString(),\n      cloudflareZoneId: data.id || '',\n      renewalStatus: renewalStatus,\n      daysUntilExpiration: daysUntilExpiration\n    }\n  });\n}\n\nreturn results;"
-      },
-      "id": "process-data",
-      "name": "Process Domain Data",
+      "id": "process-domains",
+      "name": "Check Status & RDAP",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1560, 300]
+      "position": [900, 300]
     },
     {
       "parameters": {
@@ -183,7 +106,7 @@
       "name": "Upsert to Data Table",
       "type": "n8n-nodes-base.n8nTables",
       "typeVersion": 1,
-      "position": [1780, 300]
+      "position": [1120, 300]
     },
     {
       "parameters": {
@@ -194,7 +117,7 @@
       "name": "Aggregate Results",
       "type": "n8n-nodes-base.aggregate",
       "typeVersion": 1,
-      "position": [2000, 300]
+      "position": [1340, 300]
     },
     {
       "parameters": {
@@ -204,19 +127,18 @@
       "name": "Format Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2220, 300]
+      "position": [1560, 300]
     },
     {
       "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ $json }}",
+        "respondWith": "allIncomingItems",
         "options": {}
       },
       "id": "webhook-response",
       "name": "Webhook Response",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [2440, 300]
+      "position": [1780, 300]
     }
   ],
   "connections": {
@@ -224,25 +146,14 @@
       "main": [
         [
           {
-            "node": "Cloudflare - List Zones",
+            "node": "Fetch All Cloudflare Zones",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Cloudflare - List Zones": {
-      "main": [
-        [
-          {
-            "node": "Split Zones",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Split Zones": {
+    "Fetch All Cloudflare Zones": {
       "main": [
         [
           {
@@ -257,12 +168,7 @@
       "main": [
         [
           {
-            "node": "Check Website Status",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "WHOIS/RDAP Lookup",
+            "node": "Check Status & RDAP",
             "type": "main",
             "index": 0
           }
@@ -276,40 +182,7 @@
         ]
       ]
     },
-    "Check Website Status": {
-      "main": [
-        [
-          {
-            "node": "Merge Results",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "WHOIS/RDAP Lookup": {
-      "main": [
-        [
-          {
-            "node": "Merge Results",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Merge Results": {
-      "main": [
-        [
-          {
-            "node": "Process Domain Data",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Process Domain Data": {
+    "Check Status & RDAP": {
       "main": [
         [
           {
@@ -360,6 +233,6 @@
   "staticData": null,
   "tags": [],
   "triggerCount": 0,
-  "updatedAt": "2024-01-01T00:00:00.000Z",
-  "versionId": "1"
+  "updatedAt": "2026-02-13T00:00:00.000Z",
+  "versionId": "2"
 }
