@@ -1,68 +1,85 @@
 {
-  "name": "Get All Domains",
+  "name": "Get Domains",
   "nodes": [
     {
       "parameters": {
-        "httpMethod": "GET",
+        "httpMethod": "POST",
         "path": "get-domains",
         "responseMode": "responseNode",
         "options": {}
       },
-      "id": "webhook-trigger",
-      "name": "Webhook Trigger",
       "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [240, 300],
-      "webhookId": "get-domains"
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "343c0942-4bd9-4422-9be1-ecdea7f1cdf2",
+      "name": "Webhook",
+      "webhookId": "c742ac5c-15b8-4c15-915d-f0b990afd466"
     },
     {
       "parameters": {
-        "operation": "getAll",
-        "tableId": "domains",
-        "returnAll": true,
-        "options": {}
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HhIjOZoqh2MciLvC",
+          "mode": "list",
+          "cachedResultName": "domains",
+          "cachedResultUrl": "/projects/GZaAImtP0U41Lgwk/datatables/HhIjOZoqh2MciLvC"
+        },
+        "returnAll": true
       },
-      "id": "read-data-table",
-      "name": "Read Domains Table",
-      "type": "n8n-nodes-base.n8nTables",
-      "typeVersion": 1,
-      "position": [460, 300]
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        208,
+        0
+      ],
+      "id": "91eef749-1ccf-4b7b-be55-89f2da925144",
+      "name": "Get row(s)"
     },
     {
       "parameters": {
-        "jsCode": "const items = $input.all();\nconst now = new Date();\nconst thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);\n\nconst processedDomains = items.map(item => {\n  const data = item.json;\n  let renewalStatus = 'unknown';\n  let daysUntilExpiration = null;\n\n  // Sanitize expirationDate - reject n8n expression strings\n  let expirationDate = data.expirationDate || null;\n  if (expirationDate && (expirationDate.includes('{{') || expirationDate.includes('$json'))) {\n    expirationDate = null;\n  }\n  if (expirationDate) {\n    const testDate = new Date(expirationDate);\n    if (isNaN(testDate.getTime())) {\n      expirationDate = null;\n    }\n  }\n\n  if (expirationDate) {\n    const expDate = new Date(expirationDate);\n    daysUntilExpiration = Math.ceil((expDate - now) / (1000 * 60 * 60 * 24));\n\n    if (expDate < now) {\n      renewalStatus = 'expired';\n    } else if (expDate < thirtyDaysFromNow) {\n      renewalStatus = 'warning';\n    } else {\n      renewalStatus = 'healthy';\n    }\n  }\n\n  // Map statusCategory - keep 'unknown' for unchecked domains\n  const httpStatus = parseInt(data.httpStatus, 10) || 0;\n  let statusCategory = data.statusCategory || 'unknown';\n  if (httpStatus === 0 && (!statusCategory || statusCategory === 'down')) {\n    statusCategory = 'unknown';\n  }\n\n  return {\n    json: {\n      id: data.id || data.domain,\n      domain: data.domain,\n      httpStatus: httpStatus,\n      statusCategory: statusCategory,\n      registrar: data.registrar || 'Unknown',\n      nameServers: data.nameServers || '',\n      expirationDate: expirationDate,\n      createdDate: data.createdDate || null,\n      lastChecked: data.lastChecked,\n      cloudflareZoneId: data.cloudflareZoneId || '',\n      renewalStatus: renewalStatus,\n      daysUntilExpiration: daysUntilExpiration,\n      createdAt: data.createdAt,\n      updatedAt: data.updatedAt\n    }\n  };\n});\n\nreturn processedDomains;"
+        "jsCode": "const items = $input.all();\nconst now = new Date();\nconst thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);\n\nfunction sanitizeExpirationDate(value) {\n  if (!value) return null;\n  if (typeof value === 'string' && (value.includes('{{') || value.includes('$json'))) return null;\n  const date = new Date(value);\n  if (isNaN(date.getTime())) return null;\n  return value;\n}\n\nconst processedDomains = items.map(item => {\n  const data = item.json;\n  let renewalStatus = 'unknown';\n  let daysUntilExpiration = null;\n  \n  const cleanExpDate = sanitizeExpirationDate(data.expirationDate);\n  \n  if (cleanExpDate) {\n    const expDate = new Date(cleanExpDate);\n    daysUntilExpiration = Math.ceil((expDate - now) / (1000 * 60 * 60 * 24));\n    \n    if (expDate < now) {\n      renewalStatus = 'expired';\n    } else if (expDate < thirtyDaysFromNow) {\n      renewalStatus = 'warning';\n    } else {\n      renewalStatus = 'healthy';\n    }\n  }\n  \n  // Fix statusCategory for unchecked domains\n  let statusCategory = data.statusCategory || 'unknown';\n  const httpStatus = data.httpStatus || 0;\n  if (httpStatus === 0 && (statusCategory === 'down' || statusCategory === 'unknown')) {\n    statusCategory = 'unknown';\n  }\n  \n  return {\n    json: {\n      id: data.id || data.domain,\n      domain: data.domain,\n      httpStatus: httpStatus,\n      statusCategory: statusCategory,\n      registrar: data.registrar || 'Unknown',\n      nameServers: data.nameServers || '',\n      expirationDate: cleanExpDate,\n      createdDate: data.createdDate || null,\n      lastChecked: data.lastChecked,\n      cloudflareZoneId: data.cloudflareZoneId || '',\n      renewalStatus: renewalStatus,\n      daysUntilExpiration: daysUntilExpiration\n    }\n  };\n});\n\nreturn processedDomains;"
       },
-      "id": "calculate-renewal-status",
-      "name": "Calculate Renewal Status",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [680, 300]
+      "position": [
+        416,
+        0
+      ],
+      "id": "calc-renewal-001",
+      "name": "Calculate Renewal Status"
     },
     {
       "parameters": {
         "respondWith": "allIncomingItems",
         "options": {}
       },
-      "id": "webhook-response",
-      "name": "Webhook Response",
       "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.1,
-      "position": [900, 300]
+      "typeVersion": 1.5,
+      "position": [
+        624,
+        0
+      ],
+      "id": "54d0a3f8-3585-4d7c-b5ae-0c80360015f6",
+      "name": "Respond to Webhook"
     }
   ],
   "connections": {
-    "Webhook Trigger": {
+    "Webhook": {
       "main": [
         [
           {
-            "node": "Read Domains Table",
+            "node": "Get row(s)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Read Domains Table": {
+    "Get row(s)": {
       "main": [
         [
           {
@@ -77,7 +94,7 @@
       "main": [
         [
           {
-            "node": "Webhook Response",
+            "node": "Respond to Webhook",
             "type": "main",
             "index": 0
           }
@@ -86,11 +103,8 @@
     }
   },
   "settings": {
-    "executionOrder": "v1"
-  },
-  "staticData": null,
-  "tags": [],
-  "triggerCount": 0,
-  "updatedAt": "2026-02-13T00:00:00.000Z",
-  "versionId": "2"
+    "executionOrder": "v1",
+    "availableInMCP": false,
+    "callerPolicy": "workflowsFromSameOwner"
+  }
 }

@@ -12,100 +12,179 @@
           ]
         }
       },
-      "id": "schedule-trigger",
-      "name": "Schedule Trigger",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [240, 300]
+      "position": [
+        240,
+        300
+      ],
+      "id": "schedule-trigger-001",
+      "name": "Schedule Trigger"
     },
     {
       "parameters": {
-        "operation": "getAll",
-        "tableId": "domains",
-        "returnAll": true,
-        "options": {}
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HhIjOZoqh2MciLvC",
+          "mode": "list",
+          "cachedResultName": "domains",
+          "cachedResultUrl": "/projects/GZaAImtP0U41Lgwk/datatables/HhIjOZoqh2MciLvC"
+        },
+        "returnAll": true
       },
-      "id": "read-domains",
-      "name": "Read All Domains",
-      "type": "n8n-nodes-base.n8nTables",
-      "typeVersion": 1,
-      "position": [460, 300]
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        460,
+        300
+      ],
+      "id": "read-domains-001",
+      "name": "Read All Domains"
     },
     {
       "parameters": {
-        "batchSize": 10,
-        "options": {}
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const domain = item.json.domain;\n  \n  // --- HTTP Status Check ---\n  let httpStatus = 0;\n  let statusCategory = 'unknown';\n  try {\n    const response = await this.helpers.httpRequest({\n      method: 'HEAD',\n      url: `https://${domain}`,\n      followRedirect: false,\n      timeout: 10000,\n      returnFullResponse: true,\n      ignoreHttpStatusErrors: true,\n    });\n    httpStatus = response.statusCode || 0;\n    if (httpStatus >= 200 && httpStatus < 300) {\n      statusCategory = 'healthy';\n    } else if (httpStatus >= 300 && httpStatus < 400) {\n      statusCategory = 'redirect';\n    } else {\n      statusCategory = 'down';\n    }\n  } catch (e) {\n    httpStatus = 0;\n    statusCategory = 'down';\n  }\n\n  // --- RDAP Lookup (only if no valid expiration date) ---\n  let expirationDate = item.json.expirationDate || null;\n  let registrar = item.json.registrar || 'Unknown';\n  \n  if (expirationDate && (String(expirationDate).includes('{{') || String(expirationDate).includes('$json'))) {\n    expirationDate = null;\n  }\n  \n  if (!expirationDate) {\n    try {\n      const rdapResponse = await this.helpers.httpRequest({\n        method: 'GET',\n        url: `https://rdap.org/domain/${domain}`,\n        followRedirect: true,\n        timeout: 15000,\n        json: true,\n      });\n\n      if (rdapResponse.events && Array.isArray(rdapResponse.events)) {\n        const expirationEvent = rdapResponse.events.find(e => e.eventAction === 'expiration');\n        if (expirationEvent && expirationEvent.eventDate) {\n          expirationDate = expirationEvent.eventDate;\n        }\n      }\n\n      if (rdapResponse.entities && Array.isArray(rdapResponse.entities)) {\n        const registrarEntity = rdapResponse.entities.find(\n          e => e.roles && Array.isArray(e.roles) && e.roles.includes('registrar')\n        );\n        if (registrarEntity && registrarEntity.vcardArray && registrarEntity.vcardArray[1]) {\n          const fn = registrarEntity.vcardArray[1].find(v => v[0] === 'fn');\n          if (fn && fn[3]) registrar = fn[3];\n        }\n      }\n    } catch (e) {\n      // RDAP lookup failed\n    }\n  }\n\n  let renewalStatus = 'unknown';\n  let daysUntilExpiration = null;\n  if (expirationDate) {\n    const now = new Date();\n    const expDate = new Date(expirationDate);\n    const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);\n    daysUntilExpiration = Math.ceil((expDate - now) / (1000 * 60 * 60 * 24));\n    if (expDate < now) {\n      renewalStatus = 'expired';\n    } else if (expDate < thirtyDaysFromNow) {\n      renewalStatus = 'warning';\n    } else {\n      renewalStatus = 'healthy';\n    }\n  }\n\n  results.push({\n    json: {\n      domain: domain,\n      httpStatus: httpStatus,\n      statusCategory: statusCategory,\n      registrar: registrar,\n      expirationDate: expirationDate,\n      renewalStatus: renewalStatus,\n      daysUntilExpiration: daysUntilExpiration,\n      lastChecked: new Date().toISOString()\n    }\n  });\n}\n\nreturn results;"
       },
-      "id": "batch-domains",
-      "name": "Batch Domains",
-      "type": "n8n-nodes-base.splitInBatches",
-      "typeVersion": 3,
-      "position": [680, 300]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Check HTTP status for each domain in the batch\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const domain = item.json.domain;\n  let httpStatus = 0;\n  let statusCategory = 'down';\n\n  try {\n    const response = await this.helpers.httpRequest({\n      method: 'HEAD',\n      url: `https://${domain}`,\n      followRedirect: false,\n      timeout: 10000,\n      returnFullResponse: true,\n      ignoreHttpStatusErrors: true,\n    });\n    httpStatus = response.statusCode || 0;\n    if (httpStatus >= 200 && httpStatus < 300) {\n      statusCategory = 'healthy';\n    } else if (httpStatus >= 300 && httpStatus < 400) {\n      statusCategory = 'redirect';\n    } else {\n      statusCategory = 'down';\n    }\n  } catch (e) {\n    httpStatus = 0;\n    statusCategory = 'down';\n  }\n\n  results.push({\n    json: {\n      domain: domain,\n      httpStatus: httpStatus,\n      statusCategory: statusCategory,\n      lastChecked: new Date().toISOString()\n    }\n  });\n}\n\nreturn results;"
-      },
-      "id": "check-status",
-      "name": "Check Website Status",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [900, 300]
+      "position": [
+        680,
+        300
+      ],
+      "id": "check-status-001",
+      "name": "Check Status & RDAP"
     },
     {
       "parameters": {
-        "operation": "update",
-        "tableId": "domains",
-        "fieldsUi": {
-          "values": [
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HhIjOZoqh2MciLvC",
+          "mode": "list",
+          "cachedResultName": "domains",
+          "cachedResultUrl": "/projects/GZaAImtP0U41Lgwk/datatables/HhIjOZoqh2MciLvC"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
             {
-              "column": "httpStatus",
-              "value": "={{ $json.httpStatus }}"
-            },
-            {
-              "column": "statusCategory",
-              "value": "={{ $json.statusCategory }}"
-            },
-            {
-              "column": "lastChecked",
-              "value": "={{ $json.lastChecked }}"
+              "keyName": "domain",
+              "condition": "eq",
+              "keyValue": "={{ $json.domain }}"
             }
           ]
         },
-        "matchingColumns": ["domain"]
-      },
-      "id": "update-data-table",
-      "name": "Update Status in Table",
-      "type": "n8n-nodes-base.n8nTables",
-      "typeVersion": 1,
-      "position": [1120, 300]
-    },
-    {
-      "parameters": {
-        "operation": "insert",
-        "tableId": "status_checks",
-        "fieldsUi": {
-          "values": [
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "domain": "={{ $json.domain }}",
+            "httpStatus": "={{ $json.httpStatus }}",
+            "statusCategory": "={{ $json.statusCategory }}",
+            "registrar": "={{ $json.registrar }}",
+            "expirationDate": "={{ $json.expirationDate }}",
+            "renewalStatus": "={{ $json.renewalStatus }}",
+            "daysUntilExpiration": "={{ $json.daysUntilExpiration }}",
+            "lastChecked": "={{ $json.lastChecked }}"
+          },
+          "matchingColumns": [
+            "domain"
+          ],
+          "schema": [
             {
-              "column": "domain",
-              "value": "={{ $json.domain }}"
+              "id": "domain",
+              "displayName": "domain",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
             },
             {
-              "column": "httpStatus",
-              "value": "={{ $json.httpStatus }}"
+              "id": "httpStatus",
+              "displayName": "httpStatus",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
             },
             {
-              "column": "checkedAt",
-              "value": "={{ $json.lastChecked }}"
+              "id": "statusCategory",
+              "displayName": "statusCategory",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "registrar",
+              "displayName": "registrar",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "expirationDate",
+              "displayName": "expirationDate",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "renewalStatus",
+              "displayName": "renewalStatus",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "daysUntilExpiration",
+              "displayName": "daysUntilExpiration",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "lastChecked",
+              "displayName": "lastChecked",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
             }
-          ]
-        }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
       },
-      "id": "log-status-check",
-      "name": "Log Status Check",
-      "type": "n8n-nodes-base.n8nTables",
-      "typeVersion": 1,
-      "position": [1120, 480]
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        900,
+        300
+      ],
+      "id": "update-table-001",
+      "name": "Update Status in Table"
     }
   ],
   "connections": {
@@ -124,45 +203,18 @@
       "main": [
         [
           {
-            "node": "Batch Domains",
+            "node": "Check Status & RDAP",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Batch Domains": {
-      "main": [
-        [
-          {
-            "node": "Check Website Status",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Check Website Status": {
+    "Check Status & RDAP": {
       "main": [
         [
           {
             "node": "Update Status in Table",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Log Status Check",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Update Status in Table": {
-      "main": [
-        [
-          {
-            "node": "Batch Domains",
             "type": "main",
             "index": 0
           }
@@ -171,11 +223,8 @@
     }
   },
   "settings": {
-    "executionOrder": "v1"
-  },
-  "staticData": null,
-  "tags": [],
-  "triggerCount": 0,
-  "updatedAt": "2026-02-13T00:00:00.000Z",
-  "versionId": "2"
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  }
 }
