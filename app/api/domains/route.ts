@@ -71,10 +71,20 @@ export async function GET() {
     })
 
     if (!response.ok) {
+      const errorBody = await response.text().catch(() => '')
+      console.error('n8n webhook response:', response.status, response.statusText, errorBody.substring(0, 500))
       throw new Error(`n8n webhook error: ${response.status} ${response.statusText}`)
     }
 
-    const n8nData = await response.json()
+    const responseText = await response.text()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let n8nData: any
+    try {
+      n8nData = JSON.parse(responseText)
+    } catch {
+      console.error('n8n returned non-JSON response:', responseText.substring(0, 500))
+      throw new Error('n8n webhook returned non-JSON response (possibly ngrok interstitial or HTML error page)')
+    }
     const now = new Date()
 
     // Handle both array response and object with data property
