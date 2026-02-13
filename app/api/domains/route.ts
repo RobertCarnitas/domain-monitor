@@ -57,8 +57,12 @@ function calculateRenewalStatus(expirationDate: string | null): { status: 'healt
 }
 
 function getStatusCategory(httpStatus: number | null, n8nStatusCategory: string | null): 'healthy' | 'redirect' | 'down' | 'unchecked' {
-  // If n8n never checked this domain (httpStatus 0 and statusCategory unknown/null), it's unchecked
-  if ((!httpStatus || httpStatus === 0) && (!n8nStatusCategory || n8nStatusCategory === 'unknown' || n8nStatusCategory === 'down')) {
+  // If n8n explicitly checked and found it down, trust that
+  if ((!httpStatus || httpStatus === 0) && n8nStatusCategory === 'down') {
+    return 'down'
+  }
+  // If n8n never checked this domain (httpStatus 0 and no meaningful statusCategory), it's unchecked
+  if ((!httpStatus || httpStatus === 0) && (!n8nStatusCategory || n8nStatusCategory === 'unknown')) {
     return 'unchecked'
   }
   if (!httpStatus || httpStatus === 0) return 'down'
