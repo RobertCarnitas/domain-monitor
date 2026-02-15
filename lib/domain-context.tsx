@@ -1,16 +1,21 @@
 'use client'
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import type { Domain, StatusGroup } from './types'
 
 interface DomainContextType {
   domains: Domain[]
+  filteredDomains: Domain[]
+  excludedDomains: Domain[]
   loading: boolean
   error: string | null
   lastSynced: string | null
+  searchQuery: string
+  setSearchQuery: (query: string) => void
   refetch: () => Promise<void>
   triggerSync: () => Promise<void>
   syncing: boolean
+  toggleExclusion: (domain: string, excluded: boolean) => Promise<void>
   getWebsiteStatusGroups: () => StatusGroup
   getRenewalStatusGroups: () => StatusGroup
 }
@@ -23,6 +28,7 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null)
   const [lastSynced, setLastSynced] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const fetchDomains = useCallback(async () => {
     try {
@@ -60,23 +66,57 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchDomains])
 
+  const toggleExclusion = useCallback(async (domain: string, excluded: boolean) => {
+    try {
+      const response = await fetch('/api/exclude', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, excluded }),
+      })
+      if (!response.ok) throw new Error('Failed to toggle exclusion')
+      // Optimistically update local state
+      setDomains(prev => prev.map(d =>
+        d.domain === domain ? { ...d, excluded } : d
+      ))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update exclusion')
+    }
+  }, [])
+
+  // Filter by search query
+  const searchFiltered = useMemo(() => {
+    if (!searchQuery.trim()) return domains
+    const q = searchQuery.toLowerCase()
+    return domains.filter(d =>
+      d.domain.toLowerCase().includes(q) ||
+      d.registrar.toLowerCase().includes(q)
+    )
+  }, [domains, searchQuery])
+
+  // Split into active (non-excluded) and excluded
+  const filteredDomains = useMemo(() =>
+    searchFiltered.filter(d => !d.excluded), [searchFiltered])
+
+  const excludedDomains = useMemo(() =>
+    searchFiltered.filter(d => d.excluded), [searchFiltered])
+
   const getWebsiteStatusGroups = useCallback((): StatusGroup => {
     return {
-      critical: domains.filter(d => d.statusCategory === 'down'),
-      warning: domains.filter(d => d.statusCategory === 'redirect'),
-      healthy: domains.filter(d => d.statusCategory === 'healthy'),
-      unchecked: domains.filter(d => d.statusCategory === 'unchecked')
+      critical: filteredDomains.filter(d => d.statusCategory === 'down'),
+      warning: filteredDomains.filter(d => d.statusCategory === 'redirect'),
+      healthy: filteredDomains.filter(d => d.statusCategory === 'healthy'),
+      unchecked: filteredDomains.filter(d => d.statusCategory === 'unchecked')
     }
-  }, [domains])
+  }, [filteredDomains])
 
   const getRenewalStatusGroups = useCallback((): StatusGroup => {
     return {
-      critical: domains.filter(d => d.renewalStatus === 'expired'),
-      warning: domains.filter(d => d.renewalStatus === 'warning'),
-      healthy: domains.filter(d => d.renewalStatus === 'healthy'),
-      unchecked: domains.filter(d => d.renewalStatus === 'unknown')
+      critical: filteredDomains.filter(d => d.renewalStatus === 'expired'),
+      warning: filteredDomains.filter(d => d.renewalStatus === 'warning'),
+      healthy: filteredDomains.filter(d => d.renewalStatus === 'healthy'),
+      unchecked: filteredDomains.filter(d => d.renewalStatus === 'unknown')
     }
-  }, [domains])
+  }, [filteredDomains])
 
   useEffect(() => {
     fetchDomains()
@@ -86,12 +126,17 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
     <DomainContext.Provider
       value={{
         domains,
+        filteredDomains,
+        excludedDomains,
         loading,
         error,
         lastSynced,
+        searchQuery,
+        setSearchQuery,
         refetch: fetchDomains,
         triggerSync,
         syncing,
+        toggleExclusion,
         getWebsiteStatusGroups,
         getRenewalStatusGroups
       }}

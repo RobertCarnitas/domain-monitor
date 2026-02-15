@@ -1,0 +1,126 @@
+{
+  "name": "Toggle Domain Exclusion",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "toggle-exclusion",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        240,
+        300
+      ],
+      "id": "toggle-webhook-001",
+      "name": "Webhook",
+      "webhookId": "toggle-exclusion-wh"
+    },
+    {
+      "parameters": {
+        "jsCode": "const domain = $input.first().json.body.domain;\nconst excluded = $input.first().json.body.excluded;\nreturn [{ json: { domain: domain, excluded: String(excluded) } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ],
+      "id": "extract-body-001",
+      "name": "Extract Body"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HhIjOZoqh2MciLvC",
+          "mode": "list",
+          "cachedResultName": "domains",
+          "cachedResultUrl": "/projects/GZaAImtP0U41Lgwk/datatables/HhIjOZoqh2MciLvC"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "domain",
+              "condition": "eq",
+              "keyValue": "={{ $json.domain }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "excluded": "={{ $json.excluded }}"
+          },
+          "matchingColumns": [
+            "domain"
+          ],
+          "schema": [
+            {
+              "id": "domain",
+              "displayName": "domain",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "excluded",
+              "displayName": "excluded",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        680,
+        300
+      ],
+      "id": "upsert-exclusion-001",
+      "name": "Update Exclusion Flag"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Body": {
+      "main": [
+        [
+          {
+            "node": "Update Exclusion Flag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  }
+}

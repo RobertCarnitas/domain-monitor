@@ -19,6 +19,7 @@ interface N8nDomainRow {
   lastChecked: string | null
   renewalStatus: string | null
   daysUntilExpiration: number | null
+  excluded: boolean | string | null
   createdAt: string
   updatedAt: string
 }
@@ -162,6 +163,7 @@ export async function GET() {
         cloudflareZoneId: d.cloudflareZoneId,
         renewalStatus,
         daysUntilExpiration,
+        excluded: d.excluded === true || d.excluded === 'true',
       }
     })
 

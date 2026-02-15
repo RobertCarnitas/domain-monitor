@@ -1,8 +1,10 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { Ban } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { formatDate, getStatusExplanation } from '@/lib/utils'
+import { useDomainData } from '@/lib/domain-context'
 import type { Domain } from '@/lib/types'
 
 interface DomainListProps {
@@ -12,6 +14,7 @@ interface DomainListProps {
 
 export function DomainList({ domains, type }: DomainListProps) {
   const router = useRouter()
+  const { toggleExclusion } = useDomainData()
 
   if (domains.length === 0) {
     return (
@@ -24,12 +27,14 @@ export function DomainList({ domains, type }: DomainListProps) {
   return (
     <div className="mt-2 space-y-2 pl-4 border-l-2 border-muted">
       {domains.map(domain => (
-        <button
+        <div
           key={domain.domain}
-          onClick={() => router.push(`/domains/${encodeURIComponent(domain.domain)}`)}
           className="w-full flex items-center justify-between p-3 bg-card rounded-lg hover:bg-muted transition-colors text-left border"
         >
-          <div className="min-w-0 flex-1">
+          <button
+            onClick={() => router.push(`/domains/${encodeURIComponent(domain.domain)}`)}
+            className="min-w-0 flex-1 text-left"
+          >
             <p className="font-medium truncate">{domain.domain}</p>
             <p className="text-sm text-muted-foreground truncate">
               {type === 'website'
@@ -37,16 +42,28 @@ export function DomainList({ domains, type }: DomainListProps) {
                 : getExpirationExplanation(domain.daysUntilExpiration)
               }
             </p>
+          </button>
+          <div className="flex items-center gap-1 ml-2 shrink-0">
+            <Badge variant={getBadgeVariant(domain, type)}>
+              {type === 'website'
+                ? domain.statusCategory === 'unchecked' ? 'N/A' : `${domain.httpStatus}`
+                : domain.daysUntilExpiration !== null
+                  ? `${domain.daysUntilExpiration}d`
+                  : 'N/A'
+              }
+            </Badge>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                toggleExclusion(domain.domain, true)
+              }}
+              className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+              title="Exclude domain"
+            >
+              <Ban className="h-3.5 w-3.5" />
+            </button>
           </div>
-          <Badge variant={getBadgeVariant(domain, type)} className="ml-2 shrink-0">
-            {type === 'website'
-              ? domain.statusCategory === 'unchecked' ? 'N/A' : `${domain.httpStatus}`
-              : domain.daysUntilExpiration !== null
-                ? `${domain.daysUntilExpiration}d`
-                : 'N/A'
-            }
-          </Badge>
-        </button>
+        </div>
       ))}
     </div>
   )

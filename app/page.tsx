@@ -3,11 +3,14 @@
 import { DomainProvider, useDomainData } from '@/lib/domain-context'
 import { Header } from '@/components/header'
 import { StatusSection } from '@/components/status-section'
+import { SearchBar } from '@/components/search-bar'
+import { ExcludedDomainList } from '@/components/excluded-domain-list'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { AlertCircle } from 'lucide-react'
 
 function DashboardContent() {
-  const { loading, error } = useDomainData()
+  const { loading, error, excludedDomains } = useDomainData()
 
   if (loading) {
     return (
@@ -29,10 +32,24 @@ function DashboardContent() {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <StatusSection title="Website Status" type="website" />
-      <StatusSection title="Renewal Status" type="renewal" />
-    </div>
+    <>
+      <SearchBar />
+      <div className="grid gap-6 lg:grid-cols-2">
+        <StatusSection title="Website Status" type="website" />
+        <StatusSection title="Renewal Status" type="renewal" />
+      </div>
+
+      {excludedDomains.length > 0 && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-lg">Excluded Domains ({excludedDomains.length})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ExcludedDomainList domains={excludedDomains} />
+          </CardContent>
+        </Card>
+      )}
+    </>
   )
 }
 

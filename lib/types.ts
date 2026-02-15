@@ -11,6 +11,7 @@ export interface Domain {
   cloudflareZoneId: string
   renewalStatus: 'healthy' | 'warning' | 'expired' | 'unknown'
   daysUntilExpiration: number | null
+  excluded: boolean
 }
 
 export interface DNSRecord {
