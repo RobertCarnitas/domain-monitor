@@ -163,7 +163,7 @@ function DomainDetailContent() {
               {domainData.httpStatus || 'N/A'}
             </p>
             <p className="text-sm text-muted-foreground">
-              {getStatusExplanation(domainData.httpStatus)}
+              {getStatusExplanation(domainData.httpStatus, domainData.statusCategory)}
             </p>
           </CardContent>
         </Card>

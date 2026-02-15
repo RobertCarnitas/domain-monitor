@@ -40,7 +40,7 @@ export function DomainList({ domains, type }: DomainListProps) {
               {type === 'website'
                 ? domain.statusCategory === 'redirect' && domain.redirectTo
                   ? `Redirects to ${domain.redirectTo}`
-                  : getStatusExplanation(domain.httpStatus)
+                  : getStatusExplanation(domain.httpStatus, domain.statusCategory)
                 : domain.renewalStatus === 'unknown'
                   ? getUnknownRenewalReason(domain.domain)
                   : getExpirationExplanation(domain.daysUntilExpiration)
@@ -52,6 +52,7 @@ export function DomainList({ domains, type }: DomainListProps) {
               {type === 'website'
                 ? domain.statusCategory === 'unchecked' ? 'N/A'
                   : domain.statusCategory === 'redirect' ? '301'
+                  : domain.statusCategory === 'down' && domain.httpStatus === 0 ? 'DOWN'
                   : `${domain.httpStatus}`
                 : domain.renewalStatus === 'unknown'
                   ? getRenewalBadgeLabel(domain.domain)

@@ -27,7 +27,7 @@ export function formatDateTime(dateString: string | null): string {
   })
 }
 
-export function getStatusExplanation(status: number): string {
+export function getStatusExplanation(status: number, statusCategory?: string): string {
   if (status === 200) return 'Website is responding normally'
   if (status === 301) return 'Permanent redirect configured'
   if (status === 302) return 'Temporary redirect in place'
@@ -36,7 +36,10 @@ export function getStatusExplanation(status: number): string {
   if (status === 500) return 'Server error'
   if (status === 502) return 'Bad gateway'
   if (status === 503) return 'Service unavailable'
-  if (status === 0) return 'Not yet checked'
+  if (status === 0) {
+    if (statusCategory === 'down') return 'Site unreachable'
+    return 'Not yet checked'
+  }
   return `HTTP ${status} response`
 }
 
