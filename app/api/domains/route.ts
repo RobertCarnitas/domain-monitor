@@ -20,6 +20,7 @@ interface N8nDomainRow {
   renewalStatus: string | null
   daysUntilExpiration: number | null
   excluded: boolean | string | null
+  redirectTo: string | null
   createdAt: string
   updatedAt: string
 }
@@ -57,12 +58,20 @@ function calculateRenewalStatus(expirationDate: string | null): { status: 'healt
   }
 }
 
-function getStatusCategory(httpStatus: number | null, n8nStatusCategory: string | null): 'healthy' | 'redirect' | 'down' | 'unchecked' {
-  // If n8n explicitly checked and found it down, trust that
-  if ((!httpStatus || httpStatus === 0) && n8nStatusCategory === 'down') {
-    return 'down'
+function parseStatusCategory(n8nStatusCategory: string | null): { category: string, redirectTo: string } {
+  if (!n8nStatusCategory) return { category: 'unknown', redirectTo: '' }
+  // Parse encoded redirect target: 'redirect:targetdomain.com'
+  if (n8nStatusCategory.startsWith('redirect:')) {
+    return { category: 'redirect', redirectTo: n8nStatusCategory.substring('redirect:'.length) }
   }
-  // If n8n never checked this domain (httpStatus 0 and no meaningful statusCategory), it's unchecked
+  return { category: n8nStatusCategory, redirectTo: '' }
+}
+
+function getStatusCategory(httpStatus: number | null, n8nStatusCategory: string | null): 'healthy' | 'redirect' | 'down' | 'unchecked' {
+  // Trust n8n's explicit status category when set
+  if (n8nStatusCategory === 'redirect') return 'redirect'
+  if (n8nStatusCategory === 'down' && (!httpStatus || httpStatus === 0)) return 'down'
+  // If n8n never checked this domain
   if ((!httpStatus || httpStatus === 0) && (!n8nStatusCategory || n8nStatusCategory === 'unknown')) {
     return 'unchecked'
   }
@@ -147,8 +156,14 @@ export async function GET() {
       // Calculate renewal status from sanitized expiration date
       const { status: renewalStatus, days: daysUntilExpiration } = calculateRenewalStatus(cleanExpirationDate)
 
+      // Parse statusCategory — may contain encoded redirect target like 'redirect:targetdomain.com'
+      const { category: parsedCategory, redirectTo: parsedRedirectTo } = parseStatusCategory(d.statusCategory)
+
       // Get status category from HTTP status, using n8n's stored category to detect unchecked domains
-      const statusCategory = getStatusCategory(httpStatusNum, d.statusCategory)
+      const statusCategory = getStatusCategory(httpStatusNum, parsedCategory)
+
+      // Use redirectTo from n8n response if available, otherwise from parsed statusCategory
+      const redirectTo = d.redirectTo || parsedRedirectTo || ''
 
       return {
         id: d.id.toString(),
@@ -164,6 +179,7 @@ export async function GET() {
         renewalStatus,
         daysUntilExpiration,
         excluded: d.excluded === true || d.excluded === 'true',
+        redirectTo,
       }
     })
 

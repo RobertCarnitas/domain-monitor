@@ -38,18 +38,26 @@ export function DomainList({ domains, type }: DomainListProps) {
             <p className="font-medium truncate">{domain.domain}</p>
             <p className="text-sm text-muted-foreground truncate">
               {type === 'website'
-                ? getStatusExplanation(domain.httpStatus)
-                : getExpirationExplanation(domain.daysUntilExpiration)
+                ? domain.statusCategory === 'redirect' && domain.redirectTo
+                  ? `Redirects to ${domain.redirectTo}`
+                  : getStatusExplanation(domain.httpStatus)
+                : domain.renewalStatus === 'unknown'
+                  ? getUnknownRenewalReason(domain.domain)
+                  : getExpirationExplanation(domain.daysUntilExpiration)
               }
             </p>
           </button>
           <div className="flex items-center gap-1 ml-2 shrink-0">
             <Badge variant={getBadgeVariant(domain, type)}>
               {type === 'website'
-                ? domain.statusCategory === 'unchecked' ? 'N/A' : `${domain.httpStatus}`
-                : domain.daysUntilExpiration !== null
-                  ? `${domain.daysUntilExpiration}d`
-                  : 'N/A'
+                ? domain.statusCategory === 'unchecked' ? 'N/A'
+                  : domain.statusCategory === 'redirect' ? '301'
+                  : `${domain.httpStatus}`
+                : domain.renewalStatus === 'unknown'
+                  ? getRenewalBadgeLabel(domain.domain)
+                  : domain.daysUntilExpiration !== null
+                    ? `${domain.daysUntilExpiration}d`
+                    : 'N/A'
               }
             </Badge>
             <button
@@ -76,6 +84,25 @@ function getExpirationExplanation(days: number | null): string {
   if (days === 1) return 'Expires tomorrow'
   if (days <= 14) return `Expires in ${days} days`
   return `Expires on ${formatDate(new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString())}`
+}
+
+// TLDs that don't support RDAP lookups — explain why expiration is unknown
+const RDAP_UNSUPPORTED_TLDS = ['.io', '.us', '.ai', '.gg', '.tv', '.cc', '.ws', '.fm', '.am', '.ly']
+
+function getUnknownRenewalReason(domain: string): string {
+  const tld = '.' + domain.split('.').slice(-1)[0]
+  if (RDAP_UNSUPPORTED_TLDS.includes(tld)) {
+    return `RDAP not available for ${tld} domains`
+  }
+  return 'Expiration date unknown'
+}
+
+function getRenewalBadgeLabel(domain: string): string {
+  const tld = '.' + domain.split('.').slice(-1)[0]
+  if (RDAP_UNSUPPORTED_TLDS.includes(tld)) {
+    return tld
+  }
+  return 'N/A'
 }
 
 function getBadgeVariant(domain: Domain, type: 'website' | 'renewal'): 'destructive' | 'warning' | 'success' | 'secondary' {

@@ -12,6 +12,7 @@ export interface Domain {
   renewalStatus: 'healthy' | 'warning' | 'expired' | 'unknown'
   daysUntilExpiration: number | null
   excluded: boolean
+  redirectTo: string
 }
 
 export interface DNSRecord {
