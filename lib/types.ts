@@ -38,6 +38,11 @@ export interface SyncResult {
   errors: string[]
 }
 
+export interface SlackConfig {
+  webhookUrl: string
+  enabled: boolean
+}
+
 export type StatusColor = 'red' | 'yellow' | 'green' | 'gray'
 
 export interface StatusGroup {

@@ -1,0 +1,200 @@
+{
+  "name": "Slack Config",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "slack-config",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [240, 100],
+      "id": "get-config-wh",
+      "name": "GET Slack Config",
+      "webhookId": "slack-config-get-wh"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HhIjOZoqh2MciLvC",
+          "mode": "list",
+          "cachedResultName": "domains",
+          "cachedResultUrl": "/projects/GZaAImtP0U41Lgwk/datatables/HhIjOZoqh2MciLvC"
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [460, 100],
+      "id": "read-config-row",
+      "name": "Read Config Row"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst configItem = items.find(i => i.json.domain === '__slack_config__');\nif (!configItem) {\n  return [{ json: { webhookUrl: '', enabled: false } }];\n}\nconst row = configItem.json;\nconst webhookUrl = row.statusCategory || '';\nconst enabled = webhookUrl.startsWith('https://hooks.slack.com/');\nreturn [{ json: { webhookUrl, enabled } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 100],
+      "id": "format-config",
+      "name": "Format Config"
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [900, 100],
+      "id": "respond-get",
+      "name": "Respond GET"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "slack-config",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [240, 340],
+      "id": "post-config-wh",
+      "name": "POST Slack Config",
+      "webhookId": "slack-config-post-wh"
+    },
+    {
+      "parameters": {
+        "jsCode": "const webhookUrl = $input.first().json.body.webhookUrl || '';\nreturn [{ json: { domain: '__slack_config__', statusCategory: webhookUrl, httpStatus: webhookUrl ? '1' : '0' } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 340],
+      "id": "extract-save",
+      "name": "Extract Save Data"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HhIjOZoqh2MciLvC",
+          "mode": "list",
+          "cachedResultName": "domains",
+          "cachedResultUrl": "/projects/GZaAImtP0U41Lgwk/datatables/HhIjOZoqh2MciLvC"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "domain",
+              "condition": "eq",
+              "keyValue": "={{ $json.domain }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "domain": "={{ $json.domain }}",
+            "statusCategory": "={{ $json.statusCategory }}",
+            "httpStatus": "={{ $json.httpStatus }}"
+          },
+          "matchingColumns": ["domain"],
+          "schema": [
+            {
+              "id": "domain",
+              "displayName": "domain",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "statusCategory",
+              "displayName": "statusCategory",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "httpStatus",
+              "displayName": "httpStatus",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [680, 340],
+      "id": "upsert-config",
+      "name": "Save Config"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "test-slack",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [240, 580],
+      "id": "test-slack-wh",
+      "name": "POST Test Slack",
+      "webhookId": "test-slack-wh"
+    },
+    {
+      "parameters": {
+        "jsCode": "const webhookUrl = $input.first().json.body.webhookUrl;\nif (!webhookUrl || !webhookUrl.startsWith('https://hooks.slack.com/')) {\n  return [{ json: { success: false, message: 'Invalid Slack webhook URL' } }];\n}\n\nconst blocks = [\n  {\n    type: 'header',\n    text: { type: 'plain_text', text: 'Domain Monitor \\u2014 Test Alert', emoji: true }\n  },\n  {\n    type: 'section',\n    text: { type: 'mrkdwn', text: 'This is a test notification from your Domain Monitor. If you see this, Slack alerts are configured correctly. :white_check_mark:' }\n  },\n  {\n    type: 'context',\n    elements: [{ type: 'mrkdwn', text: `Sent at ${new Date().toISOString()}` }]\n  }\n];\n\nconst attachments = [\n  { color: '#2ecc71', text: 'Slack integration is working' }\n];\n\ntry {\n  await this.helpers.httpRequest({\n    method: 'POST',\n    url: webhookUrl,\n    body: { blocks, attachments },\n    headers: { 'Content-Type': 'application/json' },\n  });\n  return [{ json: { success: true, message: 'Test alert sent successfully' } }];\n} catch (err) {\n  return [{ json: { success: false, message: 'Failed to send: ' + err.message } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 580],
+      "id": "send-test",
+      "name": "Send Test Alert"
+    }
+  ],
+  "connections": {
+    "GET Slack Config": {
+      "main": [[{ "node": "Read Config Row", "type": "main", "index": 0 }]]
+    },
+    "Read Config Row": {
+      "main": [[{ "node": "Format Config", "type": "main", "index": 0 }]]
+    },
+    "Format Config": {
+      "main": [[{ "node": "Respond GET", "type": "main", "index": 0 }]]
+    },
+    "POST Slack Config": {
+      "main": [[{ "node": "Extract Save Data", "type": "main", "index": 0 }]]
+    },
+    "Extract Save Data": {
+      "main": [[{ "node": "Save Config", "type": "main", "index": 0 }]]
+    },
+    "POST Test Slack": {
+      "main": [[{ "node": "Send Test Alert", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  }
+}

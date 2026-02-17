@@ -125,6 +125,8 @@ export async function GET() {
     // Deduplicate domains - keep the one with valid httpStatus (non-zero) or most recently updated
     const domainMap = new Map<string, N8nDomainRow>()
     for (const row of rows) {
+      // Skip internal config rows (e.g. __slack_config__)
+      if (row.domain && row.domain.startsWith('__')) continue
       const existing = domainMap.get(row.domain)
       if (!existing) {
         domainMap.set(row.domain, row)

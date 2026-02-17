@@ -1,6 +1,7 @@
 'use client'
 
-import { RefreshCw, Globe, LogOut } from 'lucide-react'
+import Link from 'next/link'
+import { RefreshCw, Globe, LogOut, Settings } from 'lucide-react'
 import { useSession, signOut } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { useDomainData } from '@/lib/domain-context'
@@ -35,6 +36,11 @@ export function Header() {
               <RefreshCw className={cn("h-4 w-4 mr-2", syncing && "animate-spin")} />
               {syncing ? 'Syncing...' : 'Sync Now'}
             </Button>
+            <Link href="/settings">
+              <Button variant="ghost" size="icon" title="Settings">
+                <Settings className="h-4 w-4" />
+              </Button>
+            </Link>
             {session?.user && (
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground hidden sm:inline">
