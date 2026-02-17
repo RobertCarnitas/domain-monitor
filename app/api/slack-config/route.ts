@@ -32,9 +32,11 @@ export async function GET() {
       })
     }
 
-    const data = await response.json()
+    const raw = await response.json()
+    // n8n respondToWebhook returns an array of items
+    const data = Array.isArray(raw) ? raw[0] : raw
     // If n8n returned empty config, fall back to env var
-    const webhookUrl = data.webhookUrl || SLACK_WEBHOOK_URL
+    const webhookUrl = (data && data.webhookUrl) || SLACK_WEBHOOK_URL
     return NextResponse.json({
       webhookUrl,
       enabled: webhookUrl.startsWith('https://hooks.slack.com/'),
