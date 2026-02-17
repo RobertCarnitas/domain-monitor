@@ -13,6 +13,7 @@ export interface Domain {
   daysUntilExpiration: number | null
   excluded: boolean
   redirectTo: string
+  triageStatus: '' | 'investigating' | 'resolved' | 'non-issue'
 }
 
 export interface DNSRecord {

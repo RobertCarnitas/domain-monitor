@@ -54,7 +54,7 @@ export function StatusSection({ title, type }: StatusSectionProps) {
         <StatusIndicator
           color="green"
           count={statusGroups.healthy.length}
-          label="Healthy"
+          label={type === 'renewal' ? 'Active' : 'Healthy'}
           expanded={expandedStatus === 'healthy'}
           onClick={() => toggleExpanded('healthy')}
         />

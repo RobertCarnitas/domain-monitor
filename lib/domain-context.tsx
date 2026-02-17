@@ -16,6 +16,7 @@ interface DomainContextType {
   triggerSync: () => Promise<void>
   syncing: boolean
   toggleExclusion: (domain: string, excluded: boolean) => Promise<void>
+  setTriageStatus: (domain: string, status: '' | 'investigating' | 'resolved' | 'non-issue') => Promise<void>
   getWebsiteStatusGroups: () => StatusGroup
   getRenewalStatusGroups: () => StatusGroup
 }
@@ -116,6 +117,26 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  const setTriageStatus = useCallback(async (domain: string, status: '' | 'investigating' | 'resolved' | 'non-issue') => {
+    // Optimistically update local state
+    setDomains(prev =>
+      prev.map(d =>
+        d.domain === domain ? { ...d, triageStatus: status } : d
+      )
+    )
+
+    // Persist to n8n data table
+    try {
+      await fetch('/api/triage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, triageStatus: status }),
+      })
+    } catch {
+      // Silently fail - optimistic update stays in place until next refetch
+    }
+  }, [])
+
   // Apply exclusions to domains
   const domainsWithExclusion = useMemo(() =>
     domains.map(d => ({
@@ -177,6 +198,7 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
         triggerSync,
         syncing,
         toggleExclusion,
+        setTriageStatus,
         getWebsiteStatusGroups,
         getRenewalStatusGroups
       }}

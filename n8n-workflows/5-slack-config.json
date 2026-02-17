@@ -170,6 +170,88 @@
       "position": [460, 580],
       "id": "send-test",
       "name": "Send Test Alert"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "set-triage",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [240, 820],
+      "id": "set-triage-wh",
+      "name": "POST Set Triage",
+      "webhookId": "set-triage-wh"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\nconst domain = body.domain || '';\nconst triageStatus = body.triageStatus || '';\nif (!domain) return [{ json: { success: false, message: 'Domain is required' } }];\nreturn [{ json: { domain, triageStatus } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 820],
+      "id": "extract-triage",
+      "name": "Extract Triage Data"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HhIjOZoqh2MciLvC",
+          "mode": "list",
+          "cachedResultName": "domains",
+          "cachedResultUrl": "/projects/GZaAImtP0U41Lgwk/datatables/HhIjOZoqh2MciLvC"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "domain",
+              "condition": "eq",
+              "keyValue": "={{ $json.domain }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "domain": "={{ $json.domain }}",
+            "triageStatus": "={{ $json.triageStatus }}"
+          },
+          "matchingColumns": ["domain"],
+          "schema": [
+            {
+              "id": "domain",
+              "displayName": "domain",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "triageStatus",
+              "displayName": "triageStatus",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [680, 820],
+      "id": "upsert-triage",
+      "name": "Save Triage Status"
     }
   ],
   "connections": {
@@ -190,6 +272,12 @@
     },
     "POST Test Slack": {
       "main": [[{ "node": "Send Test Alert", "type": "main", "index": 0 }]]
+    },
+    "POST Set Triage": {
+      "main": [[{ "node": "Extract Triage Data", "type": "main", "index": 0 }]]
+    },
+    "Extract Triage Data": {
+      "main": [[{ "node": "Save Triage Status", "type": "main", "index": 0 }]]
     }
   },
   "settings": {

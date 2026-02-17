@@ -21,6 +21,7 @@ interface N8nDomainRow {
   daysUntilExpiration: number | null
   excluded: boolean | string | null
   redirectTo: string | null
+  triageStatus: string | null
   createdAt: string
   updatedAt: string
 }
@@ -182,6 +183,7 @@ export async function GET() {
         daysUntilExpiration,
         excluded: d.excluded === true || d.excluded === 'true',
         redirectTo,
+        triageStatus: (d.triageStatus as '' | 'investigating' | 'resolved' | 'non-issue') || '',
       }
     })
 
