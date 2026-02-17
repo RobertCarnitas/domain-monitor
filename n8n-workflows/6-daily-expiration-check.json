@@ -1,0 +1,114 @@
+{
+  "name": "Daily Expiration Check",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 6 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "id": "schedule-trigger-exp-001",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HhIjOZoqh2MciLvC",
+          "mode": "list",
+          "cachedResultName": "domains",
+          "cachedResultUrl": "/projects/GZaAImtP0U41Lgwk/datatables/HhIjOZoqh2MciLvC"
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [460, 300],
+      "id": "read-domains-exp-001",
+      "name": "Read All Domains"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfunction sleep(ms) {\n  return new Promise(resolve => setTimeout(resolve, ms));\n}\n\n// --- Extract Slack config from data table rows ---\nlet slackWebhookUrl = '';\nconst configItem = items.find(i => i.json.domain === '__slack_config__');\nif (configItem) {\n  slackWebhookUrl = configItem.json.statusCategory || '';\n  const enabled = configItem.json.httpStatus;\n  if (enabled === 0 || enabled === '0') slackWebhookUrl = '';\n}\n\nconst alertsExpiring = [];\nlet rdapCount = 0;\nconst startTime = Date.now();\nconst MAX_RUNTIME_MS = 270000; // 270s safety margin under 300s limit\n\nfor (let idx = 0; idx < items.length; idx++) {\n  // Safety: abort if we're running too long\n  if (Date.now() - startTime > MAX_RUNTIME_MS) break;\n\n  const item = items[idx];\n  const domain = item.json.domain;\n\n  // Skip config row entirely — do not include in output\n  if (domain === '__slack_config__') continue;\n  // Skip rows starting with __ (sentinel rows)\n  if (domain && domain.startsWith('__')) continue;\n\n  const isExcluded = item.json.excluded === true || item.json.excluded === 'true';\n\n  if (isExcluded) {\n    // Pass through existing RDAP data unchanged for excluded domains\n    results.push({\n      json: {\n        domain,\n        registrar: item.json.registrar || 'Unknown',\n        expirationDate: item.json.expirationDate || null,\n        renewalStatus: item.json.renewalStatus || 'unknown',\n        daysUntilExpiration: item.json.daysUntilExpiration || null\n      }\n    });\n    continue;\n  }\n\n  // --- RDAP Lookup ---\n  let expirationDate = item.json.expirationDate || null;\n  let registrar = item.json.registrar || 'Unknown';\n\n  // Sanitize expression strings that were never evaluated\n  if (expirationDate && (String(expirationDate).includes('{{') || String(expirationDate).includes('$json'))) {\n    expirationDate = null;\n  }\n\n  // Skip RDAP if we already have a valid expiration date > 30 days out\n  let needsRdap = !expirationDate;\n  if (expirationDate) {\n    const daysLeft = Math.ceil((new Date(expirationDate) - new Date()) / (1000 * 60 * 60 * 24));\n    if (daysLeft <= 30) needsRdap = true; // Re-check if expiring soon\n  }\n\n  if (needsRdap && (Date.now() - startTime < MAX_RUNTIME_MS - 10000)) {\n    try {\n      if (rdapCount > 0) await sleep(100);\n      rdapCount++;\n\n      const rdapResponse = await this.helpers.httpRequest({\n        method: 'GET',\n        url: `https://rdap.org/domain/${domain}`,\n        followRedirect: true,\n        timeout: 5000,\n        json: true,\n      });\n\n      if (rdapResponse.events && Array.isArray(rdapResponse.events)) {\n        const expirationEvent = rdapResponse.events.find(e => e.eventAction === 'expiration');\n        if (expirationEvent && expirationEvent.eventDate) {\n          expirationDate = expirationEvent.eventDate;\n        }\n      }\n\n      if (rdapResponse.entities && Array.isArray(rdapResponse.entities)) {\n        const registrarEntity = rdapResponse.entities.find(\n          e => e.roles && Array.isArray(e.roles) && e.roles.includes('registrar')\n        );\n        if (registrarEntity && registrarEntity.vcardArray && registrarEntity.vcardArray[1]) {\n          const fn = registrarEntity.vcardArray[1].find(v => v[0] === 'fn');\n          if (fn && fn[3]) registrar = fn[3];\n        }\n      }\n    } catch (e) {}\n  }\n\n  let renewalStatus = 'unknown';\n  let daysUntilExpiration = null;\n  if (expirationDate) {\n    const now = new Date();\n    const expDate = new Date(expirationDate);\n    daysUntilExpiration = Math.ceil((expDate - now) / (1000 * 60 * 60 * 24));\n    if (expDate < now) renewalStatus = 'expired';\n    else if (expDate < new Date(now.getTime() + 30*24*60*60*1000)) renewalStatus = 'warning';\n    else renewalStatus = 'healthy';\n  }\n\n  // --- CHANGE DETECTION FOR EXPIRATION MILESTONE ALERTS ---\n  if (slackWebhookUrl && daysUntilExpiration !== null && daysUntilExpiration > 0 && daysUntilExpiration <= 7) {\n    const prevDays = item.json.daysUntilExpiration;\n    if (prevDays !== null && prevDays !== undefined) {\n      const prev = Number(prevDays);\n      if (!isNaN(prev)) {\n        if (prev > 7 && daysUntilExpiration <= 7) {\n          alertsExpiring.push({ domain, daysUntilExpiration, milestone: 7 });\n        } else if (prev > 3 && daysUntilExpiration <= 3) {\n          alertsExpiring.push({ domain, daysUntilExpiration, milestone: 3 });\n        } else if (prev > 1 && daysUntilExpiration <= 1) {\n          alertsExpiring.push({ domain, daysUntilExpiration, milestone: 1 });\n        }\n      }\n    }\n  }\n\n  results.push({\n    json: {\n      domain,\n      registrar,\n      expirationDate,\n      renewalStatus,\n      daysUntilExpiration\n    }\n  });\n}\n\n// --- SEND SLACK ALERTS (expiration milestones only) ---\nif (alertsExpiring.length > 0 && slackWebhookUrl) {\n  const blocks = [];\n  const MAX_PER_SECTION = 15;\n\n  blocks.push({\n    type: 'header',\n    text: { type: 'plain_text', text: `Domain Monitor \\u2014 ${alertsExpiring.length} expiration alert${alertsExpiring.length > 1 ? 's' : ''}`, emoji: true }\n  });\n\n  blocks.push({ type: 'divider' });\n  blocks.push({ type: 'section', text: { type: 'mrkdwn', text: '*:warning: Domains Expiring*' } });\n  const shown = alertsExpiring.slice(0, MAX_PER_SECTION);\n  for (const a of shown) {\n    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*${a.domain}*\\n${a.daysUntilExpiration} day${a.daysUntilExpiration !== 1 ? 's' : ''} until expiration` } });\n  }\n  if (alertsExpiring.length > MAX_PER_SECTION) {\n    blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: `_...and ${alertsExpiring.length - MAX_PER_SECTION} more_` }] });\n  }\n\n  blocks.push({ type: 'divider' });\n  blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: `Checked at ${new Date().toISOString()} | ${results.length} domains checked` }] });\n\n  const attachments = [\n    { color: '#f39c12', text: `${alertsExpiring.length} domain${alertsExpiring.length > 1 ? 's' : ''} expiring soon: ${alertsExpiring.map(a => a.domain + ' (' + a.daysUntilExpiration + 'd)').join(', ')}` }\n  ];\n\n  try {\n    await this.helpers.httpRequest({\n      method: 'POST',\n      url: slackWebhookUrl,\n      body: { blocks, attachments },\n      headers: { 'Content-Type': 'application/json' },\n    });\n  } catch (slackErr) {\n    // Don't fail the workflow if Slack notification fails\n  }\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "id": "rdap-check-001",
+      "name": "RDAP Expiration Check"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HhIjOZoqh2MciLvC",
+          "mode": "list",
+          "cachedResultName": "domains",
+          "cachedResultUrl": "/projects/GZaAImtP0U41Lgwk/datatables/HhIjOZoqh2MciLvC"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "domain",
+              "condition": "eq",
+              "keyValue": "={{ $json.domain }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "domain": "={{ $json.domain }}",
+            "registrar": "={{ $json.registrar }}",
+            "expirationDate": "={{ $json.expirationDate }}",
+            "renewalStatus": "={{ $json.renewalStatus }}",
+            "daysUntilExpiration": "={{ $json.daysUntilExpiration }}"
+          },
+          "matchingColumns": ["domain"],
+          "schema": [
+            { "id": "domain", "displayName": "domain", "required": false, "defaultMatch": true, "display": true, "type": "string", "readOnly": false, "removed": false },
+            { "id": "registrar", "displayName": "registrar", "required": false, "defaultMatch": false, "display": true, "type": "string", "readOnly": false, "removed": false },
+            { "id": "expirationDate", "displayName": "expirationDate", "required": false, "defaultMatch": false, "display": true, "type": "string", "readOnly": false, "removed": false },
+            { "id": "renewalStatus", "displayName": "renewalStatus", "required": false, "defaultMatch": false, "display": true, "type": "string", "readOnly": false, "removed": false },
+            { "id": "daysUntilExpiration", "displayName": "daysUntilExpiration", "required": false, "defaultMatch": false, "display": true, "type": "string", "readOnly": false, "removed": false }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [900, 300],
+      "id": "update-exp-001",
+      "name": "Update Expiration Data"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [[{ "node": "Read All Domains", "type": "main", "index": 0 }]]
+    },
+    "Read All Domains": {
+      "main": [[{ "node": "RDAP Expiration Check", "type": "main", "index": 0 }]]
+    },
+    "RDAP Expiration Check": {
+      "main": [[{ "node": "Update Expiration Data", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  }
+}
