@@ -71,7 +71,7 @@ function parseStatusCategory(n8nStatusCategory: string | null): { category: stri
 function getStatusCategory(httpStatus: number | null, n8nStatusCategory: string | null): 'healthy' | 'redirect' | 'down' | 'unchecked' {
   // Trust n8n's explicit status category when set
   if (n8nStatusCategory === 'redirect') return 'redirect'
-  if (n8nStatusCategory === 'down' && (!httpStatus || httpStatus === 0)) return 'down'
+  if (n8nStatusCategory === 'down' || n8nStatusCategory === 'pending-down') return 'down'
   // If n8n never checked this domain
   if ((!httpStatus || httpStatus === 0) && (!n8nStatusCategory || n8nStatusCategory === 'unknown')) {
     return 'unchecked'
