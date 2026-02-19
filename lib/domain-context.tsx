@@ -23,25 +23,6 @@ interface DomainContextType {
 
 const DomainContext = createContext<DomainContextType | undefined>(undefined)
 
-const EXCLUSION_STORAGE_KEY = 'domain-monitor-excluded'
-
-function getStoredExclusions(): Set<string> {
-  if (typeof window === 'undefined') return new Set()
-  try {
-    const stored = localStorage.getItem(EXCLUSION_STORAGE_KEY)
-    return stored ? new Set(JSON.parse(stored)) : new Set()
-  } catch {
-    return new Set()
-  }
-}
-
-function saveExclusions(exclusions: Set<string>) {
-  if (typeof window === 'undefined') return
-  try {
-    localStorage.setItem(EXCLUSION_STORAGE_KEY, JSON.stringify(Array.from(exclusions)))
-  } catch { /* ignore storage errors */ }
-}
-
 export function DomainProvider({ children }: { children: React.ReactNode }) {
   const [domains, setDomains] = useState<Domain[]>([])
   const [loading, setLoading] = useState(true)
@@ -49,12 +30,6 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
   const [lastSynced, setLastSynced] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const [exclusions, setExclusions] = useState<Set<string>>(new Set())
-
-  // Load exclusions from localStorage on mount
-  useEffect(() => {
-    setExclusions(getStoredExclusions())
-  }, [])
 
   const fetchDomains = useCallback(async () => {
     try {
@@ -93,19 +68,14 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
   }, [fetchDomains])
 
   const toggleExclusion = useCallback(async (domain: string, excluded: boolean) => {
-    // Update local state and localStorage immediately
-    setExclusions(prev => {
-      const next = new Set(prev)
-      if (excluded) {
-        next.add(domain)
-      } else {
-        next.delete(domain)
-      }
-      saveExclusions(next)
-      return next
-    })
+    // Optimistically update local state from n8n data
+    setDomains(prev =>
+      prev.map(d =>
+        d.domain === domain ? { ...d, excluded } : d
+      )
+    )
 
-    // Also try to persist to n8n (best-effort, may fail if column doesn't exist yet)
+    // Persist to n8n data table (server is the source of truth)
     try {
       await fetch('/api/exclude', {
         method: 'POST',
@@ -113,7 +83,12 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ domain, excluded }),
       })
     } catch {
-      // Silently fail - localStorage is the source of truth
+      // Revert optimistic update on failure
+      setDomains(prev =>
+        prev.map(d =>
+          d.domain === domain ? { ...d, excluded: !excluded } : d
+        )
+      )
     }
   }, [])
 
@@ -137,22 +112,15 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  // Apply exclusions to domains
-  const domainsWithExclusion = useMemo(() =>
-    domains.map(d => ({
-      ...d,
-      excluded: exclusions.has(d.domain)
-    })), [domains, exclusions])
-
-  // Filter by search query
+  // Filter by search query (exclusion comes from n8n data directly)
   const searchFiltered = useMemo(() => {
-    if (!searchQuery.trim()) return domainsWithExclusion
+    if (!searchQuery.trim()) return domains
     const q = searchQuery.toLowerCase()
-    return domainsWithExclusion.filter(d =>
+    return domains.filter(d =>
       d.domain.toLowerCase().includes(q) ||
       d.registrar.toLowerCase().includes(q)
     )
-  }, [domainsWithExclusion, searchQuery])
+  }, [domains, searchQuery])
 
   // Split into active (non-excluded) and excluded
   const filteredDomains = useMemo(() =>
@@ -186,7 +154,7 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
   return (
     <DomainContext.Provider
       value={{
-        domains: domainsWithExclusion,
+        domains,
         filteredDomains,
         excludedDomains,
         loading,

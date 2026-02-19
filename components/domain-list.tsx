@@ -172,10 +172,16 @@ export function DomainList({ domains, type }: DomainListProps) {
             <button
               onClick={(e) => {
                 e.stopPropagation()
+                if (!domain.triageStatus) return
                 toggleExclusion(domain.domain, true)
               }}
-              className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-              title="Exclude domain"
+              className={`p-1 rounded transition-colors ${
+                domain.triageStatus
+                  ? 'hover:bg-destructive/10 text-muted-foreground hover:text-destructive'
+                  : 'text-muted-foreground/30 cursor-not-allowed'
+              }`}
+              title={domain.triageStatus ? 'Exclude domain' : 'Set a triage tag first'}
+              disabled={!domain.triageStatus}
             >
               <Ban className="h-3.5 w-3.5" />
             </button>
