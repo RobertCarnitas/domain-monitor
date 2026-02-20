@@ -181,9 +181,9 @@ export async function GET() {
         cloudflareZoneId: d.cloudflareZoneId,
         renewalStatus,
         daysUntilExpiration,
-        excluded: d.excluded === true || d.excluded === 'true',
+        excluded: (d.triageStatus || '').startsWith('excluded:'),
         redirectTo,
-        triageStatus: (d.triageStatus as '' | 'investigating' | 'resolved' | 'non-issue') || '',
+        triageStatus: ((d.triageStatus || '').replace(/^excluded:/, '') as '' | 'investigating' | 'resolved' | 'non-issue') || '',
       }
     })
 

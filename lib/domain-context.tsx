@@ -68,6 +68,10 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
   }, [fetchDomains])
 
   const toggleExclusion = useCallback(async (domain: string, excluded: boolean) => {
+    // Find the domain's current triageStatus to send along
+    const domainData = domains.find(d => d.domain === domain)
+    const triageStatus = domainData?.triageStatus || ''
+
     // Optimistically update local state from n8n data
     setDomains(prev =>
       prev.map(d =>
@@ -76,11 +80,12 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
     )
 
     // Persist to n8n data table (server is the source of truth)
+    // The n8n workflow encodes exclusion into triageStatus field
     try {
       await fetch('/api/exclude', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ domain, excluded }),
+        body: JSON.stringify({ domain, excluded, triageStatus }),
       })
     } catch {
       // Revert optimistic update on failure
@@ -90,7 +95,7 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
         )
       )
     }
-  }, [])
+  }, [domains])
 
   const setTriageStatus = useCallback(async (domain: string, status: '' | 'investigating' | 'resolved' | 'non-issue') => {
     // Optimistically update local state

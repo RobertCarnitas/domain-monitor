@@ -13,7 +13,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const { domain, excluded } = await request.json()
+    const { domain, excluded, triageStatus } = await request.json()
 
     if (!domain || typeof excluded !== 'boolean') {
       return NextResponse.json(
@@ -23,13 +23,15 @@ export async function POST(request: Request) {
     }
 
     // Call n8n webhook to toggle exclusion in the data table
+    // The n8n workflow encodes exclusion into the triageStatus field
+    // (e.g. 'excluded:investigating' vs 'investigating')
     const response = await fetch(`${N8N_WEBHOOK_URL}/toggle-exclusion`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'ngrok-skip-browser-warning': 'true',
       },
-      body: JSON.stringify({ domain, excluded }),
+      body: JSON.stringify({ domain, excluded, triageStatus: triageStatus || '' }),
     })
 
     if (!response.ok) {

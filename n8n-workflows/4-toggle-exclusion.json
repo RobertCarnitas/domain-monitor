@@ -10,24 +10,18 @@
       },
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
-      "position": [
-        240,
-        300
-      ],
+      "position": [240, 300],
       "id": "toggle-webhook-001",
       "name": "Webhook",
       "webhookId": "toggle-exclusion-wh"
     },
     {
       "parameters": {
-        "jsCode": "const domain = $input.first().json.body.domain;\nconst excluded = $input.first().json.body.excluded;\nreturn [{ json: { domain: domain, excluded: String(excluded) } }];"
+        "jsCode": "const body = $input.first().json.body;\nconst domain = body.domain;\nconst excluded = body.excluded === true || body.excluded === 'true';\nconst triageStatus = body.triageStatus || '';\n\n// Encode exclusion into triageStatus field:\n// excluded domains: 'excluded:investigating', 'excluded:resolved', 'excluded:non-issue'\n// non-excluded domains: 'investigating', 'resolved', 'non-issue', ''\nlet storedTriage;\nif (excluded) {\n  // Strip any existing 'excluded:' prefix before re-adding\n  const baseTriage = triageStatus.replace(/^excluded:/, '');\n  storedTriage = 'excluded:' + baseTriage;\n} else {\n  // Re-including: strip 'excluded:' prefix\n  storedTriage = triageStatus.replace(/^excluded:/, '');\n}\n\nreturn [{ json: { domain, triageStatus: storedTriage } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        460,
-        300
-      ],
+      "position": [460, 300],
       "id": "extract-body-001",
       "name": "Extract Body"
     },
@@ -54,68 +48,29 @@
         "columns": {
           "mappingMode": "defineBelow",
           "value": {
-            "excluded": "={{ $json.excluded }}"
+            "triageStatus": "={{ $json.triageStatus }}"
           },
-          "matchingColumns": [
-            "domain"
-          ],
+          "matchingColumns": ["domain"],
           "schema": [
-            {
-              "id": "domain",
-              "displayName": "domain",
-              "required": false,
-              "defaultMatch": true,
-              "display": true,
-              "type": "string",
-              "readOnly": false,
-              "removed": false
-            },
-            {
-              "id": "excluded",
-              "displayName": "excluded",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "readOnly": false,
-              "removed": false
-            }
+            { "id": "domain", "displayName": "domain", "required": false, "defaultMatch": true, "display": true, "type": "string", "readOnly": false, "removed": false },
+            { "id": "triageStatus", "displayName": "triageStatus", "required": false, "defaultMatch": false, "display": true, "type": "string", "readOnly": false, "removed": false }
           ]
         },
         "options": {}
       },
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
-      "position": [
-        680,
-        300
-      ],
+      "position": [680, 300],
       "id": "upsert-exclusion-001",
       "name": "Update Exclusion Flag"
     }
   ],
   "connections": {
     "Webhook": {
-      "main": [
-        [
-          {
-            "node": "Extract Body",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Extract Body", "type": "main", "index": 0 }]]
     },
     "Extract Body": {
-      "main": [
-        [
-          {
-            "node": "Update Exclusion Flag",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Update Exclusion Flag", "type": "main", "index": 0 }]]
     }
   },
   "settings": {
