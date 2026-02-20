@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Ban, MoreHorizontal, Search, CheckCircle2, MinusCircle } from 'lucide-react'
+import { Ban, MoreHorizontal, Search, CheckCircle2, MinusCircle, Layers, Shield, TrendingDown, MessageCircleQuestion, Flag } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { formatDate, getStatusExplanation } from '@/lib/utils'
 import { useDomainData } from '@/lib/domain-context'
@@ -17,6 +17,11 @@ const TRIAGE_OPTIONS = [
   { value: 'investigating' as const, label: 'Investigating', icon: Search, color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' },
   { value: 'resolved' as const, label: 'Resolved', icon: CheckCircle2, color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' },
   { value: 'non-issue' as const, label: 'Non-Issue', icon: MinusCircle, color: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300' },
+  { value: 'secondary-domain' as const, label: 'Secondary Domain', icon: Layers, color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300' },
+  { value: 'av-test-site' as const, label: 'AV Test Site', icon: Shield, color: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300' },
+  { value: 'churn' as const, label: 'Churn', icon: TrendingDown, color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300' },
+  { value: 'needs-customer-input' as const, label: 'Needs Customer Input', icon: MessageCircleQuestion, color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300' },
+  { value: 'the-patriots-suck' as const, label: 'The Patriots Suck', icon: Flag, color: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300' },
 ] as const
 
 function isTriageable(domain: Domain, type: 'website' | 'renewal'): boolean {

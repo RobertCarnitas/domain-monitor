@@ -1,7 +1,7 @@
 'use client'
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
-import type { Domain, StatusGroup } from './types'
+import type { Domain, StatusGroup, TriageStatus } from './types'
 
 interface DomainContextType {
   domains: Domain[]
@@ -16,7 +16,7 @@ interface DomainContextType {
   triggerSync: () => Promise<void>
   syncing: boolean
   toggleExclusion: (domain: string, excluded: boolean) => Promise<void>
-  setTriageStatus: (domain: string, status: '' | 'investigating' | 'resolved' | 'non-issue') => Promise<void>
+  setTriageStatus: (domain: string, status: TriageStatus) => Promise<void>
   getWebsiteStatusGroups: () => StatusGroup
   getRenewalStatusGroups: () => StatusGroup
 }
@@ -97,7 +97,11 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
     }
   }, [domains])
 
-  const setTriageStatus = useCallback(async (domain: string, status: '' | 'investigating' | 'resolved' | 'non-issue') => {
+  const setTriageStatus = useCallback(async (domain: string, status: TriageStatus) => {
+    // Find the domain to check if it's excluded (so n8n can preserve the excluded: prefix)
+    const domainData = domains.find(d => d.domain === domain)
+    const isExcluded = domainData?.excluded || false
+
     // Optimistically update local state
     setDomains(prev =>
       prev.map(d =>
@@ -110,12 +114,12 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
       await fetch('/api/triage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ domain, triageStatus: status }),
+        body: JSON.stringify({ domain, triageStatus: status, excluded: isExcluded }),
       })
     } catch {
       // Silently fail - optimistic update stays in place until next refetch
     }
-  }, [])
+  }, [domains])
 
   // Filter by search query (exclusion comes from n8n data directly)
   const searchFiltered = useMemo(() => {

@@ -10,7 +10,10 @@
       },
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
-      "position": [240, 100],
+      "position": [
+        240,
+        100
+      ],
       "id": "get-config-wh",
       "name": "GET Slack Config",
       "webhookId": "slack-config-get-wh"
@@ -29,7 +32,10 @@
       },
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
-      "position": [460, 100],
+      "position": [
+        460,
+        100
+      ],
       "id": "read-config-row",
       "name": "Read Config Row"
     },
@@ -39,7 +45,10 @@
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [680, 100],
+      "position": [
+        680,
+        100
+      ],
       "id": "format-config",
       "name": "Format Config"
     },
@@ -50,7 +59,10 @@
       },
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
-      "position": [900, 100],
+      "position": [
+        900,
+        100
+      ],
       "id": "respond-get",
       "name": "Respond GET"
     },
@@ -63,7 +75,10 @@
       },
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
-      "position": [240, 340],
+      "position": [
+        240,
+        340
+      ],
       "id": "post-config-wh",
       "name": "POST Slack Config",
       "webhookId": "slack-config-post-wh"
@@ -74,7 +89,10 @@
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [460, 340],
+      "position": [
+        460,
+        340
+      ],
       "id": "extract-save",
       "name": "Extract Save Data"
     },
@@ -105,7 +123,9 @@
             "statusCategory": "={{ $json.statusCategory }}",
             "httpStatus": "={{ $json.httpStatus }}"
           },
-          "matchingColumns": ["domain"],
+          "matchingColumns": [
+            "domain"
+          ],
           "schema": [
             {
               "id": "domain",
@@ -143,7 +163,10 @@
       },
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
-      "position": [680, 340],
+      "position": [
+        680,
+        340
+      ],
       "id": "upsert-config",
       "name": "Save Config"
     },
@@ -156,7 +179,10 @@
       },
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
-      "position": [240, 580],
+      "position": [
+        240,
+        580
+      ],
       "id": "test-slack-wh",
       "name": "POST Test Slack",
       "webhookId": "test-slack-wh"
@@ -167,7 +193,10 @@
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [460, 580],
+      "position": [
+        460,
+        580
+      ],
       "id": "send-test",
       "name": "Send Test Alert"
     },
@@ -180,18 +209,24 @@
       },
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
-      "position": [240, 820],
+      "position": [
+        240,
+        820
+      ],
       "id": "set-triage-wh",
       "name": "POST Set Triage",
       "webhookId": "set-triage-wh"
     },
     {
       "parameters": {
-        "jsCode": "const body = $input.first().json.body;\nconst domain = body.domain || '';\nconst triageStatus = body.triageStatus || '';\nif (!domain) return [{ json: { success: false, message: 'Domain is required' } }];\nreturn [{ json: { domain, triageStatus } }];"
+        "jsCode": "const body = $input.first().json.body;\nconst domain = body.domain || '';\nconst triageStatus = body.triageStatus || '';\nconst excluded = body.excluded === true || body.excluded === 'true';\nif (!domain) return [{ json: { success: false, message: 'Domain is required' } }];\n// Preserve the excluded: prefix when domain is excluded\nlet storedTriage;\nif (excluded) {\n  storedTriage = 'excluded:' + triageStatus.replace(/^excluded:/, '');\n} else {\n  storedTriage = triageStatus.replace(/^excluded:/, '');\n}\nreturn [{ json: { domain, triageStatus: storedTriage } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [460, 820],
+      "position": [
+        460,
+        820
+      ],
       "id": "extract-triage",
       "name": "Extract Triage Data"
     },
@@ -221,7 +256,9 @@
             "domain": "={{ $json.domain }}",
             "triageStatus": "={{ $json.triageStatus }}"
           },
-          "matchingColumns": ["domain"],
+          "matchingColumns": [
+            "domain"
+          ],
           "schema": [
             {
               "id": "domain",
@@ -249,35 +286,102 @@
       },
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
-      "position": [680, 820],
+      "position": [
+        680,
+        820
+      ],
       "id": "upsert-triage",
       "name": "Save Triage Status"
     }
   ],
   "connections": {
     "GET Slack Config": {
-      "main": [[{ "node": "Read Config Row", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Read Config Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Read Config Row": {
-      "main": [[{ "node": "Format Config", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Format Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Format Config": {
-      "main": [[{ "node": "Respond GET", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Respond GET",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "POST Slack Config": {
-      "main": [[{ "node": "Extract Save Data", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Extract Save Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Extract Save Data": {
-      "main": [[{ "node": "Save Config", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Save Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "POST Test Slack": {
-      "main": [[{ "node": "Send Test Alert", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Send Test Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "POST Set Triage": {
-      "main": [[{ "node": "Extract Triage Data", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Extract Triage Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Extract Triage Data": {
-      "main": [[{ "node": "Save Triage Status", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Save Triage Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {

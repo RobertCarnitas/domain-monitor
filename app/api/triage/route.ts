@@ -7,7 +7,7 @@ const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { domain, triageStatus } = body
+    const { domain, triageStatus, excluded } = body
 
     if (!domain) {
       return NextResponse.json(
@@ -23,13 +23,14 @@ export async function POST(request: Request) {
       )
     }
 
+    // Send excluded flag so n8n can preserve the 'excluded:' prefix in triageStatus
     const response = await fetch(`${N8N_WEBHOOK_URL}/set-triage`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'ngrok-skip-browser-warning': 'true',
       },
-      body: JSON.stringify({ domain, triageStatus: triageStatus || '' }),
+      body: JSON.stringify({ domain, triageStatus: triageStatus || '', excluded: excluded || false }),
     })
 
     if (!response.ok) {

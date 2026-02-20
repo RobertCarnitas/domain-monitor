@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { Domain } from '@/lib/types'
+import { Domain, TriageStatus } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -181,9 +181,9 @@ export async function GET() {
         cloudflareZoneId: d.cloudflareZoneId,
         renewalStatus,
         daysUntilExpiration,
-        excluded: (d.triageStatus || '').startsWith('excluded:'),
+        excluded: d.excluded === true || d.excluded === 'true',
         redirectTo,
-        triageStatus: ((d.triageStatus || '').replace(/^excluded:/, '') as '' | 'investigating' | 'resolved' | 'non-issue') || '',
+        triageStatus: (d.triageStatus as TriageStatus) || '',
       }
     })
 
